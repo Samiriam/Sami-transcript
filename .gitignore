@@ -1,0 +1,24 @@
+# Sami Transcribe
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+**/build/
+**/.idea/
+**/.metadata
+pubspec.lock
+
+# Local artifacts
+*.log
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
