@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 
 import '../domain/recording.dart';
 import 'recording_provider.dart';
+import 'recording_detail_screen.dart';
 import 'widgets/recording_card.dart';
 import '../../../core/services/theme_service.dart';
 import 'settings_screen.dart';
@@ -259,7 +259,13 @@ class _RecordingList extends StatelessWidget {
         final recording = recordings[index];
         return RecordingCard(
           recording: recording,
-          onTap: () {},
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => RecordingDetailScreen(recording: recording),
+              ),
+            );
+          },
           onDelete: () {
             _confirmDelete(context, recording);
           },
