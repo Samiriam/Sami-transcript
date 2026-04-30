@@ -1,7 +1,7 @@
 # Plan de Trabajo — Sami Transcribe
 
-> Ultima actualizacion: 2026-04-29  
-> Estado: **Fase 1 — Sprint 1 en progreso**  
+> Ultima actualizacion: 2026-04-30  
+> Estado: **Fase 2 — Sprint 2 implementado, faltan importacion y exportacion**  
 > Enfoque actual: **beta personal de un solo usuario**
 
 ---
@@ -142,13 +142,16 @@ Cuando el producto crezca, se agregará `User` y sincronización remota sin romp
 - [x] Almacenamiento local del audio grabado
 - [x] Tests unitarios y de widget para UI de grabacion
 
-#### Sprint 2 (Sem 3–4): Transcripción + Importación
-- [ ] Integrar motor de transcripción
-- [ ] Procesar audio local post-grabación
+#### Sprint 2 (Sem 3-4): Transcripción + Importación
+- [x] Integrar motor de transcripción local por defecto
+- [x] Permitir motor configurables (OpenAI compatible / AssemblyAI)
+- [x] Guardar transcripción y metadatos en SQLite
+- [x] Pantalla de historial de grabaciones
+- [x] Pantalla de transcripción con edición básica
+- [x] Resumen de transcripciones
 - [ ] Importar archivos externos
+- [ ] Procesar audio local post-grabación
 - [ ] Validar formatos y tamaño
-- [ ] Guardar transcripción y metadatos en SQLite
-- [ ] Pantalla de historial de grabaciones
 - [ ] Tests de integración para transcripción e importación
 
 ---
@@ -219,6 +222,7 @@ Cuando la beta personal esté estable, el siguiente camino será:
 | 2026-04-28 | Se redifinio el proyecto para beta personal | Alcance reducido y mas realista |
 | 2026-04-29 | Se instalo Flutter SDK, Android SDK, herramientas | Entorno listo para desarrollo |
 | 2026-04-29 | Sprint 1 implementado: DB, grabacion, UI, tema | Codigo funcional pendiente de prueba en dispositivo |
+| 2026-04-30 | Sprint 2 implementado: Whisper local y APIs configurables | Base de transcripcion lista |
 
 ---
 

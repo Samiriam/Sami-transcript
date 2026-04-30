@@ -1,12 +1,12 @@
 # SDD — Sami Transcribe
 
 > Documento de diseño técnico
-> Fecha: 2026-04-28
+> Fecha: 2026-04-30
 > Estado: Borrador para implementación
 
 ## 1. Propósito
 
-Definir la arquitectura y decisiones técnicas para construir **Sami Transcribe**, una app móvil y web para grabación, transcripción, diarización y exportación de reuniones.
+Definir la arquitectura y decisiones técnicas para construir **Sami Transcribe**, una app móvil local-first para grabación, transcripción, configuración de motor IA y exportación de reuniones.
 
 ## 2. Objetivos
 
@@ -20,13 +20,12 @@ Definir la arquitectura y decisiones técnicas para construir **Sami Transcribe*
 
 ### Incluido
 - App móvil iOS/Android.
-- PWA/web.
 - Grabación local.
-- Importación de audios externos.
 - Transcripción diferida.
-- Diarización básica.
-- Exportación PDF/DOCX.
-- Plan free y premium.
+- Configuración de motor local o API externa.
+- Diarización básica cuando el proveedor la soporte.
+- Exportación PDF/TXT/DOCX.
+- Beta personal sin backend.
 
 ### Excluido por ahora
 - Video.
@@ -34,6 +33,7 @@ Definir la arquitectura y decisiones técnicas para construir **Sami Transcribe*
 - Integraciones con videollamadas.
 - Edición colaborativa simultánea.
 - Soporte masivo multi-idioma.
+- Multiusuario y billing.
 
 ## 4. Requisitos No Funcionales
 
@@ -47,16 +47,14 @@ Definir la arquitectura y decisiones técnicas para construir **Sami Transcribe*
 
 ### Frontend
 - **Flutter** para móvil.
-- **Flutter Web** o **Next.js PWA** para navegador.
 
-### Backend
-- **API Node.js** con Fastify o Express.
-- **Worker asíncrono** para transcripción y exportación.
-- **PostgreSQL** como base principal.
-- **Object storage** para audio y documentos.
+### Persistencia
+- **SQLite / sqflite** para metadatos.
+- **Filesystem local** para audio y exportaciones.
 
 ### IA
-- Proveedor externo para transcripción y diarización.
+- Whisper local como opción por defecto.
+- OpenAI-compatible o AssemblyAI como alternativas configurables.
 - Interfaz desacoplada para permitir cambiar de proveedor.
 
 ## 6. Componentes
@@ -68,34 +66,33 @@ Responsable de:
 - Exploración de grabaciones.
 - Visualización y edición de transcripciones.
 
-### 6.2 API Principal
-Responsable de:
-- Usuarios y planes.
-- CRUD de grabaciones.
-- Orquestación de jobs.
-- Exposición de estados de procesamiento.
+### 6.2 Servicios locales
+Responsables de:
+- Persistencia SQLite.
+- Grabación de audio.
+- Configuración del motor de transcripción.
+- Resumen local cuando no hay API.
 
-### 6.3 Worker
+### 6.3 IA externa opcional
 Responsable de:
 - Enviar audio al proveedor de IA.
 - Recibir y normalizar resultados.
-- Generar exportaciones.
-- Reintentos y manejo de fallas.
+- Generar resúmenes cuando la API lo permita.
 
 ### 6.4 Storage
 - Audio original.
-- Archivos transcritos.
-- PDFs y DOCX generados.
+- Transcripciones persistidas.
+- Exportaciones futuras.
 
 ## 7. Flujo Principal
 
-1. El usuario graba o importa audio.
-2. El cliente sube el archivo al storage.
-3. La API crea un job de transcripción.
-4. El worker procesa el audio.
-5. La API guarda transcripción y segmentos.
-6. El cliente muestra el resultado.
-7. El usuario exporta o comparte.
+1. El usuario graba audio.
+2. La app guarda el archivo localmente.
+3. El usuario elige motor local o API externa.
+4. La app procesa la transcripción.
+5. Se persisten texto y segmentos en SQLite.
+6. El cliente muestra el resultado y permite edición.
+7. El usuario genera resumen o exporta.
 
 ## 8. Modelo de Dominio
 
@@ -200,14 +197,13 @@ Evita dependencia rígida con un solo vendor y permite optimizar costo/calidad.
 ## 15. Plan de Implementación
 
 ### Fase 1
-- Base del monorepo.
-- Auth.
+- Base de la app Flutter.
 - Grabación.
-- Storage.
+- Storage local.
 
 ### Fase 2
 - Transcripción.
-- Importación.
+- Configuración de motor IA.
 - Estados y monitoreo.
 
 ### Fase 3
@@ -217,7 +213,7 @@ Evita dependencia rígida con un solo vendor y permite optimizar costo/calidad.
 
 ### Fase 4
 - Búsqueda.
-- Monetización.
+- Escalado futuro.
 - Release.
 
 ## 16. Criterios de Aceptación Técnica
@@ -237,8 +233,7 @@ Evita dependencia rígida con un solo vendor y permite optimizar costo/calidad.
 
 ## 18. Próximos Pasos
 
-1. Confirmar stack final.
-2. Definir esquema SQL inicial.
-3. Crear repositorio y estructura base.
-4. Implementar grabación y subida.
-5. Integrar proveedor de IA.
+1. Importación de audios externos.
+2. Exportación TXT/PDF.
+3. Búsqueda local en transcripciones.
+4. Mejorar manejo de diarización cuando haya proveedor compatible.

@@ -18,7 +18,7 @@ Sami Transcribe permite grabar audios, transcribirlos automaticamente y exportar
 
 ## Estado del proyecto
 
-**Fase 1 — Sprint 1 completado**
+**Fase 2 — Sprint 2 implementado, falta importacion y pulido final**
 
 - [x] Proyecto Flutter inicializado
 - [x] Base de datos SQLite con sqflite
@@ -29,7 +29,11 @@ Sami Transcribe permite grabar audios, transcribirlos automaticamente y exportar
 - [x] Pantalla de ajustes
 - [x] Historial de grabaciones
 
-Proximo: Sprint 2 — Transcripcion + importacion
+- [x] Motor de transcripcion local con Whisper
+- [x] Configuracion manual para OpenAI compatible y AssemblyAI
+- [x] Pantalla de transcripcion con edicion y resumen
+
+Proximo: importar audios externos, exportacion y busqueda local
 
 ## Stack
 
@@ -39,6 +43,7 @@ Proximo: Sprint 2 — Transcripcion + importacion
 | Persistencia | SQLite / sqflite |
 | Audio | record + audioplayers |
 | Estado | Provider |
+| Transcripcion | Whisper local + APIs configurables |
 | Tema | Material 3 con teal seed |
 
 ## Estructura del proyecto
@@ -48,14 +53,14 @@ apps/mobile/lib/
   app/            # App principal y providers
   core/
     database/     # AppDatabase (sqflite)
-    services/     # AudioRecorderService, ThemeService
+    services/     # AudioRecorderService, ThemeService, TranscriptionConfig
     storage/      # LocalPaths
     theme/        # AppTheme (light/dark)
   features/
     recordings/
       data/       # Repositorio SQLite
-      domain/     # Modelo Recording
-      presentation/  # Screens, widgets, provider
+      domain/     # Modelo Recording y enums
+      presentation/  # Screens, widgets, providers
 ```
 
 ## Como ejecutar

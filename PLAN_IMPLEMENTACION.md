@@ -1,6 +1,6 @@
 # Plan de Implementación — Sami Transcribe
 
-> Fecha: 2026-04-28  
+> Fecha: 2026-04-30  
 > Estado: Fase de arranque
 > Enfoque: beta personal primero, escalado después
 
@@ -45,7 +45,7 @@ Este plan de implementación desglosa el `PLAN_TRABAJO.md` en entregables concre
 - Crear modelo local de grabaciones.
 - Definir estados de sesión local.
 
-**Entregable:** usuario autenticado con acceso a home y perfil.
+**Entregable:** app local-first con home, ajustes y grabaciones persistidas.
 
 ### Fase 2 — Grabación e importación
 **Meta:** capturar audio de manera confiable.
@@ -65,6 +65,7 @@ Este plan de implementación desglosa el `PLAN_TRABAJO.md` en entregables concre
 - Normalizar respuesta.
 - Guardar transcripción y segmentos.
 - Mostrar progreso y estado.
+- Permitir motor local por defecto y APIs configurables.
 
 **Entregable:** audio convertido en transcripción consultable.
 
@@ -126,9 +127,10 @@ Una fase solo se considera terminada si:
 
 ## 8. Próxima acción inmediata
 
-- Confirmar configuración Flutter.
-- Crear estructura real del proyecto Flutter.
-- Registrar herramientas necesarias para el desarrollo.
+- Completar importacion de audios externos.
+- Cerrar exportacion TXT/PDF.
+- Refinar diarizacion cuando el motor lo permita.
+- Preparar pruebas de integracion de transcripcion.
 
 ## 9. Seguimiento obligatorio
 

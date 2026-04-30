@@ -40,6 +40,16 @@
 - Implementar importacion de audios externos.
 - Exportacion a PDF/TXT.
 
+### Documentacion actualizada
+- Se alineo `README.md` con el estado actual del proyecto.
+- Se actualizo `PLAN_TRABAJO.md` con Sprint 2 implementado y pendientes reales.
+- Se corrigio `PLAN_IMPLEMENTACION.md` para reflejar el orden real de trabajo en beta personal.
+- Se ajusto `SDD.md` y `docs/architecture/flutter-beta.md` a la arquitectura local-first vigente.
+- Se actualizo `HERRAMIENTAS_NECESARIAS.md` con el stack de transcripcion local + APIs opcionales.
+
+### Verificacion documental
+- La documentacion ahora coincide con el estado real del codigo: grabacion, persistencia local, Whisper local, configuracion de APIs y pantalla de transcripcion.
+
 ---
 
 ## 2026-04-29 (Sprint 1 — Implementacion)

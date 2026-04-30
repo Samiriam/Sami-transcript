@@ -1,6 +1,6 @@
 # Herramientas Necesarias — Sami Transcribe
 
-> Actualizado: 2026-04-29
+> Actualizado: 2026-04-30
 > Restricciones: PC de bajos recursos. Sin Docker, sin Android Studio. Todo desde VS Code.
 
 ## 1. Desarrollo
@@ -24,11 +24,12 @@
 
 ## 4. Persistencia local (beta personal)
 
-- **SQLite / Drift**: ya incluido en pubspec cuando se integre. No requiere instalación separada.
+- **SQLite / sqflite**: ya incluido en pubspec. No requiere instalación separada.
 
 ## 5. IA y transcripción
 
-- **API externa** (AssemblyAI o Whisper API): se consume por HTTP. No requiere instalación local.
+- **Whisper local**: motor por defecto sobre el dispositivo, sin internet.
+- **API externa** (OpenAI-compatible o AssemblyAI): opcional, se consume por HTTP.
 
 ## 6. Calidad
 
@@ -50,6 +51,8 @@
 | Android SDK | ✅ Instalado | C:\Android\android-sdk |
 | Chocolatey | ✅ Instalado | v2.7.1 |
 | Java JDK | ✅ Instalado | 1.8.0_211 |
+| whisper_flutter_new | ✅ Integrado | Motor local de transcripcion |
+| http | ✅ Integrado | Cliente para APIs de transcripcion/resumen |
 
 ## 9. Rutas de entorno
 
@@ -68,9 +71,6 @@ Path+=C:\Android\android-sdk\platform-tools
 - **licenses**: ✅ Instalado
 
 ### Componentes faltantes (por instalar)
-
-- **platforms;android-XX** (platform Android API)
-- **build-tools;XX.X.X** (build tools)
 
 - **platforms;android-XX** (platform Android API)
 - **build-tools;XX.X.X** (build tools)
@@ -118,4 +118,4 @@ Path+=C:\Android\android-sdk\platform-tools
 
 ## 10. Nota de trabajo
 
-El stack final para la beta personal es: Flutter + SQLite local + API de transcripción externa, todo desde VS Code.
+El stack final para la beta personal es: Flutter + SQLite local + Whisper local por defecto + APIs opcionales configurables, todo desde VS Code.
