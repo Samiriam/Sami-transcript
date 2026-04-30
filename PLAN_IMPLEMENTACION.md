@@ -127,10 +127,10 @@ Una fase solo se considera terminada si:
 
 ## 8. Próxima acción inmediata
 
-- Completar importacion de audios externos.
-- Cerrar exportacion TXT/PDF.
-- Refinar diarizacion cuando el motor lo permita.
-- Preparar pruebas de integracion de transcripcion.
+- Reconstruir la estructura Flutter/Android valida del proyecto para habilitar build APK.
+- Reintentar `flutter analyze` y `flutter build apk --debug`.
+- Validar en dispositivo antes de seguir con importacion y exportacion.
+- Luego retomar importacion de audios externos y exportacion.
 
 ## 9. Seguimiento obligatorio
 
@@ -145,3 +145,4 @@ Una fase solo se considera terminada si:
 |---|---|---|
 | 2026-04-28 | Se creó el plan de implementación | Base de fases lista |
 | 2026-04-28 | Pendiente | Confirmar Flutter + SQLite como base personal |
+| 2026-04-30 | Intento de build Android | Bloqueado por falta de estructura Flutter/Android completa |

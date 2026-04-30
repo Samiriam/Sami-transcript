@@ -40,6 +40,18 @@
 - Implementar importacion de audios externos.
 - Exportacion a PDF/TXT.
 
+### Build Android intentado
+- Se ejecuto `flutter doctor -v`.
+- Resultado: Flutter OK, pero Android reporta `cmdline-tools component is missing` y `Android license status unknown`.
+- Se ejecuto `flutter build apk --debug`.
+- Resultado: fallo inmediato con mensaje `Your app is using an unsupported Gradle project`.
+- Evidencia observada: `apps/mobile` contiene `lib/`, `test/`, `pubspec.yaml` y metadatos de Dart, pero no contiene la estructura nativa Flutter/Android (`android/`, `gradle/`, `settings.gradle`, etc.).
+
+### Bloqueo para programador
+- El codigo Dart esta avanzado, pero el proyecto movil no fue inicializado originalmente con la plantilla Flutter completa para Android.
+- Antes de generar APK, el programador debe reconstruir la base nativa con una estructura Flutter valida y luego reinyectar el codigo existente.
+- No se continuo con esa reparacion por instruccion del usuario.
+
 ### Documentacion actualizada
 - Se alineo `README.md` con el estado actual del proyecto.
 - Se actualizo `PLAN_TRABAJO.md` con Sprint 2 implementado y pendientes reales.

@@ -210,10 +210,10 @@ Cuando la beta personal esté estable, el siguiente camino será:
 
 ## 8. Proxima accion inmediata
 
-- Verificar compilacion con `flutter analyze` y `flutter build`.
-- Probar la app en un dispositivo/emulador Android.
-- Comenzar Sprint 2: integrar motor de transcripcion.
-- Implementar importacion de audios externos.
+- El programador debe reconstruir la estructura Flutter/Android valida del proyecto (`flutter create` o equivalente) sin perder `lib/`, `test/` y `pubspec.yaml` actuales.
+- Luego debe reintentar `flutter analyze` y `flutter build apk --debug`.
+- Si el build ya genera APK, continuar con prueba en dispositivo Android.
+- Despues retomar importacion de audios externos.
 
 ## 9. Bitácora
 
@@ -223,6 +223,7 @@ Cuando la beta personal esté estable, el siguiente camino será:
 | 2026-04-29 | Se instalo Flutter SDK, Android SDK, herramientas | Entorno listo para desarrollo |
 | 2026-04-29 | Sprint 1 implementado: DB, grabacion, UI, tema | Codigo funcional pendiente de prueba en dispositivo |
 | 2026-04-30 | Sprint 2 implementado: Whisper local y APIs configurables | Base de transcripcion lista |
+| 2026-04-30 | Intento de build APK | Bloqueado por estructura Flutter/Android no inicializada |
 
 ---
 
