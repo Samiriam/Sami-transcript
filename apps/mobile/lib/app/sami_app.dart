@@ -5,10 +5,12 @@ import 'package:record/record.dart';
 import '../core/database/app_database.dart';
 import '../core/services/audio_recorder_service.dart';
 import '../core/services/theme_service.dart';
+import '../core/services/transcription_config.dart';
 import '../core/theme/app_theme.dart';
 import '../features/recordings/data/sqlite_recording_repository.dart';
 import '../features/recordings/data/recording_repository.dart';
 import '../features/recordings/presentation/recording_provider.dart';
+import '../features/recordings/presentation/transcription_provider.dart';
 import '../features/recordings/presentation/home_screen.dart';
 
 class SamiApp extends StatelessWidget {
@@ -16,6 +18,7 @@ class SamiApp extends StatelessWidget {
 
   final _db = AppDatabase();
   final _themeService = ThemeService();
+  final _transcriptionConfig = TranscriptionConfig();
 
   @override
   Widget build(BuildContext context) {
@@ -28,16 +31,26 @@ class SamiApp extends StatelessWidget {
         Provider<AudioRecorderService>(
           create: (_) => AudioRecorderService(AudioRecorder()),
         ),
-        ChangeNotifierProxyProvider2<RecordingRepository, AudioRecorderService,
-            RecordingProvider>(
+        ChangeNotifierProvider.value(value: _transcriptionConfig),
+        ChangeNotifierProxyProvider<RecordingRepository, RecordingProvider>(
           create: (ctx) => RecordingProvider(
             ctx.read<RecordingRepository>(),
             ctx.read<AudioRecorderService>(),
           )..init(),
-          update: (_, repo, recorder, prev) {
-            return prev ??
-                RecordingProvider(repo, recorder)..init();
-          },
+          update: (_, repo, prev) =>
+              prev ?? RecordingProvider(repo, context.read<AudioRecorderService>())..init(),
+        ),
+        ChangeNotifierProxyProvider<RecordingRepository, TranscriptionProvider>(
+          create: (ctx) => TranscriptionProvider(
+            ctx.read<RecordingRepository>(),
+            _db,
+            _transcriptionConfig,
+          ),
+          update: (_, repo, prev) => prev ?? TranscriptionProvider(
+            repo,
+            _db,
+            _transcriptionConfig,
+          ),
         ),
       ],
       child: Consumer<ThemeService>(

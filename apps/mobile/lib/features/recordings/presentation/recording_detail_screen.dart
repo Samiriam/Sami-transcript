@@ -4,7 +4,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../domain/recording.dart';
+import '../domain/recording.dart';
+import 'transcription_screen.dart';
 
 class RecordingDetailScreen extends StatefulWidget {
   const RecordingDetailScreen({super.key, required this.recording});
@@ -92,9 +93,9 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
                   _showRenameDialog(context);
                   break;
                 case 'transcribe':
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Transcripcion disponible en Sprint 2'),
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TranscriptionScreen(recording: widget.recording),
                     ),
                   );
                   break;

@@ -1,5 +1,47 @@
 # Bitacora Tecnica — Sami Transcribe
 
+## 2026-04-30 (Sprint 2 — Transcripcion + Configuracion API)
+
+### Hecho
+- Se creo interfaz abstracta `TranscriptionService` con soporte para multiples motores.
+- Se implemento **Whisper local** (`whisper_flutter_new`) como motor por defecto.
+- Se implemento **cliente OpenAI compatible** con soporte para URL base personalizable.
+- Se implemento **cliente AssemblyAI** con diarizacion de hablantes.
+- Se creo `TranscriptionConfig` con persistencia de:
+  - Motor seleccionado (local/openai/assemblyai)
+  - API keys (OpenAI, AssemblyAI)
+  - URL base personalizable para OpenAI-compatible (ej: LM Studio, Ollama)
+  - Modelo Whisper (tiny/base/small)
+- Se creo servicio de **resumen de transcripciones** (local para Whisper, API para OpenAI/AssemblyAI).
+- Se creo `TranscriptionProvider` con flujo completo de transcripcion.
+- Se creo pantalla de **Transcripcion** con:
+  - Vista de texto completo
+  - Vista de segmentos con hablantes y timestamps
+  - Edicion de texto
+  - Generacion de resumen
+  - Badge del motor utilizado
+- Se actualizo la pantalla de **Ajustes** con:
+  - Selector de motor (radio buttons con descripcion)
+  - Configuracion de API key por motor
+  - URL base personalizable para OpenAI-compatible
+  - Selector de modelo Whisper
+- Se conecto la transcripcion desde la pantalla de detalle.
+- Se agrego dependencia `http` para llamadas API y `whisper_flutter_new`.
+
+### Decision tecnica
+- Se eligio `sqflite` en vez de `drift` para evitar code generation pesado.
+- Las API keys se guardan en SharedPreferences (suficiente para beta personal).
+- La URL base de OpenAI es personalizable para soportar proveedores compatibles (Ollama, LM Studio, etc.).
+- El resumen local usa extraccion de primeras oraciones como fallback.
+
+### Pendiente
+- Verificar `flutter analyze` sin errores.
+- Probar en dispositivo/emulador.
+- Implementar importacion de audios externos.
+- Exportacion a PDF/TXT.
+
+---
+
 ## 2026-04-29 (Sprint 1 — Implementacion)
 
 ### Hecho
