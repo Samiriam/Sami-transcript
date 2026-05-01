@@ -1,38 +1,29 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
+import 'model_manager.dart';
 import 'transcription_service.dart';
 
 class LocalWhisperService implements TranscriptionService {
-  LocalWhisperService({WhisperModel model = WhisperModel.base}) : _model = model;
+  LocalWhisperService({
+    WhisperModel model = WhisperModel.base,
+    ModelManager? modelManager,
+  })  : _model = model,
+        _modelManager = modelManager ?? ModelManager();
 
   final WhisperModel _model;
+  final ModelManager _modelManager;
 
   @override
   TranscriptionEngine get engine => TranscriptionEngine.local;
 
   @override
   Future<bool> isAvailable() async {
-    try {
-      final dir = await _modelDir();
-      final modelFile = File(_model.getPath(dir));
-      final exists = modelFile.existsSync();
-      _log('isAvailable -> $exists (path: ${modelFile.path})');
-      return exists;
-    } catch (e) {
-      _log('isAvailable error: $e');
-      return false;
-    }
+    return _modelManager.isAvailable(_model);
   }
 
-  Future<String> _modelDir() async {
-    final directory = Platform.isAndroid
-        ? await getApplicationSupportDirectory()
-        : await getLibraryDirectory();
-    return directory.path;
+  Future<void> ensureModel({void Function(double progress)? onProgress}) async {
+    await _modelManager.ensureModel(_model, onProgress: onProgress);
   }
 
   @override
@@ -40,12 +31,6 @@ class LocalWhisperService implements TranscriptionService {
     _log('transcribe_start audio=$audioPath model=${_model.modelName}');
 
     try {
-      final modelDir = await _modelDir();
-      final modelFile = File(_model.getPath(modelDir));
-      if (!modelFile.existsSync()) {
-        _log('model_not_found, descargando...');
-      }
-
       final whisper = Whisper(model: _model);
 
       final result = await whisper.transcribe(

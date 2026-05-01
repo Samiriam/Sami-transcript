@@ -1,17 +1,22 @@
 import 'package:flutter/foundation.dart';
+import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import '../../../core/database/app_database.dart' as db;
+import '../../../core/services/local_whisper_service.dart';
+import '../../../core/services/model_manager.dart';
 import '../../../core/services/transcription_config.dart';
 import '../../../core/services/transcription_service.dart';
 import '../data/recording_repository.dart';
 import '../domain/recording.dart';
 
 class TranscriptionProvider extends ChangeNotifier {
-  TranscriptionProvider(this._repository, this._appDb, this._config);
+  TranscriptionProvider(this._repository, this._appDb, this._config)
+      : _modelManager = ModelManager();
 
   final RecordingRepository _repository;
   final db.AppDatabase _appDb;
   final TranscriptionConfig _config;
+  final ModelManager _modelManager;
 
   bool _isTranscribing = false;
   bool get isTranscribing => _isTranscribing;
@@ -47,17 +52,27 @@ class TranscriptionProvider extends ChangeNotifier {
 
       final service = _config.createService();
 
-      if (_config.engine == TranscriptionEngine.local) {
+      if (_config.engine == TranscriptionEngine.local && service is LocalWhisperService) {
         _isModelDownloading = true;
-        _downloadProgress = 0.1;
+        _downloadProgress = 0;
         _transcriptionStatus = 'Verificando modelo local...';
         notifyListeners();
 
         final available = await service.isAvailable();
         if (!available) {
           _transcriptionStatus = 'Descargando modelo Whisper...';
-          _downloadProgress = 0.3;
+          _log('download_start');
           notifyListeners();
+
+          await service.ensureModel(
+            onProgress: (progress) {
+              _downloadProgress = progress;
+              _log('download_progress: ${(progress * 100).toInt()}%');
+              notifyListeners();
+            },
+          );
+
+          _log('download_complete');
         } else {
           _log('model_already_available');
         }
@@ -127,6 +142,39 @@ class TranscriptionProvider extends ChangeNotifier {
       _downloadProgress = 0;
       notifyListeners();
     }
+  }
+
+  Future<bool> isModelAvailable() async {
+    final service = _config.createService();
+    if (service is LocalWhisperService) {
+      return service.isAvailable();
+    }
+    return true;
+  }
+
+  Future<ModelInfo?> getModelInfo() async {
+    if (_config.engine != TranscriptionEngine.local) return null;
+    final model = _parseWhisperModel(_config.whisperModel);
+    return _modelManager.getModelInfo(model);
+  }
+
+  Future<String> getStorageInfo() async {
+    if (_config.engine != TranscriptionEngine.local) return 'N/A';
+    final info = await getModelInfo();
+    if (info == null) return 'Modelo no descargado';
+    return '${info.model.modelName} - ${info.sizeFormatted}';
+  }
+
+  WhisperModel _parseWhisperModel(String name) {
+    return switch (name) {
+      'tiny' => WhisperModel.tiny,
+      'base' => WhisperModel.base,
+      'small' => WhisperModel.small,
+      'medium' => WhisperModel.medium,
+      'large-v1' => WhisperModel.largeV1,
+      'large-v2' => WhisperModel.largeV2,
+      _ => WhisperModel.base,
+    };
   }
 
   Future<String?> getTranscriptionText(String recordingId) async {
