@@ -1,5 +1,30 @@
 # Bitacora Tecnica — Sami Transcribe
 
+## 2026-05-01 (Build APK de prueba Android)
+
+### Hecho
+- Se localizo Flutter instalado en `C:\Users\informatica\flutter` y se uso `flutter.bat` por ruta absoluta porque no esta en el `PATH` de la terminal.
+- Se verifico el toolchain Android con `flutter doctor -v` usando `JAVA_HOME=C:\Users\informatica\.jdks\ms-21.0.9`.
+- Se regenero la estructura nativa Android faltante con `flutter create --platforms=android .` dentro de `apps/mobile`.
+- Se actualizo `record` de `^5.2.0` a `^6.2.0` para resolver la incompatibilidad entre `record_linux 0.7.2` y `record_platform_interface 1.5.0` que bloqueaba la compilacion.
+- Se agrego `android.permission.RECORD_AUDIO` al manifiesto Android y se ajusto el label a `Sami Transcribe` para que la APK de prueba pueda solicitar grabacion de audio.
+- Se compilo APK debug con `flutter build apk --debug`.
+
+### Evidencia
+- Comando exitoso: `flutter build apk --debug`.
+- Resultado: `Built build\app\outputs\flutter-apk\app-debug.apk`.
+- Ruta del APK: `apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`.
+- Tiempo reportado por Gradle: `125,5s` en primera compilacion exitosa y `13,5s` en recompilacion posterior al ajuste de manifiesto.
+
+### No funciono / Intentos
+- `flutter` no resolvia desde `PATH`; se uso ruta absoluta.
+- `choco install temurin17 -y` fallo por falta de permisos sobre `C:\ProgramData\chocolatey` en terminal no elevada.
+- Primer build fallo por incompatibilidad de dependencias `record` antes de actualizar a `^6.2.0`.
+
+### Estado
+- APK debug generado y listo para prueba manual en dispositivo Android.
+- Se agregara el APK al repositorio por instruccion explicita del usuario usando Git LFS, porque el archivo pesa aproximadamente 150 MB y supera el limite normal de GitHub para archivos versionados directamente.
+
 ## 2026-04-30 (Sprint 2 — Transcripcion + Configuracion API)
 
 ### Hecho
