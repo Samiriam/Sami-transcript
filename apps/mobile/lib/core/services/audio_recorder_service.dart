@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -29,9 +30,14 @@ class AudioRecorderService {
     if (!hasPermission) return null;
 
     final directory = await getApplicationDocumentsDirectory();
-    final recordingsDir = p.join(directory.path, 'recordings');
+    final recordingsDirPath = p.join(directory.path, 'recordings');
+    final recordingsDir = Directory(recordingsDirPath);
+    if (!await recordingsDir.exists()) {
+      await recordingsDir.create(recursive: true);
+    }
+
     final fileName = '${_uuid.v4()}.m4a';
-    _currentRecordingPath = p.join(recordingsDir, fileName);
+    _currentRecordingPath = p.join(recordingsDirPath, fileName);
 
     await _recorder.start(
       const RecordConfig(encoder: AudioEncoder.aacLc),
