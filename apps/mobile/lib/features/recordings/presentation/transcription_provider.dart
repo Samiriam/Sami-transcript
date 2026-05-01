@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../core/database/app_database.dart' as db;
-import '../../../core/services/local_whisper_service.dart';
 import '../../../core/services/transcription_config.dart';
 import '../../../core/services/transcription_service.dart';
 import '../data/recording_repository.dart';
@@ -38,9 +37,6 @@ class TranscriptionProvider extends ChangeNotifier {
 
     try {
       final recording = await _repository.getById(recordingId);
-      if (recording == null) {
-        throw TranscriptionException('Grabacion no encontrada');
-      }
 
       await _repository.update(
         recording.copyWith(
@@ -118,14 +114,12 @@ class TranscriptionProvider extends ChangeNotifier {
       _log('transcribe_error: $e\n$st');
       try {
         final recording = await _repository.getById(recordingId);
-        if (recording != null) {
-          await _repository.update(
-            recording.copyWith(
-              status: RecordingStatus.failed,
-              updatedAt: DateTime.now(),
-            ),
-          );
-        }
+        await _repository.update(
+          recording.copyWith(
+            status: RecordingStatus.failed,
+            updatedAt: DateTime.now(),
+          ),
+        );
       } catch (_) {}
     } finally {
       _isTranscribing = false;
