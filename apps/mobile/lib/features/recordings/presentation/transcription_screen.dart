@@ -109,28 +109,16 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     ColorScheme colorScheme,
     TranscriptionProvider provider,
   ) {
-    if (_fullText == null && !provider.isTranscribing) {
-      return _buildEmptyState(context, colorScheme);
+    if (provider.isTranscribing) {
+      return _buildTranscribingState(context, provider);
     }
 
-    if (provider.isTranscribing) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 20),
-              Text(
-                provider.transcriptionStatus,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            ],
-          ),
-        ),
-      );
+    if (_fullText == null && provider.lastError != null) {
+      return _buildErrorState(context, colorScheme, provider);
+    }
+
+    if (_fullText == null) {
+      return _buildEmptyState(context, colorScheme);
     }
 
     return ListView(
@@ -153,6 +141,79 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         const SizedBox(height: 24),
         _buildSummarySection(context, colorScheme),
       ],
+    );
+  }
+
+  Widget _buildTranscribingState(
+    BuildContext context,
+    TranscriptionProvider provider,
+  ) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 20),
+            Text(
+              provider.transcriptionStatus,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            if (provider.isModelDownloading) ...[
+              const SizedBox(height: 16),
+              LinearProgressIndicator(value: provider.downloadProgress),
+              const SizedBox(height: 8),
+              Text(
+                'Descargando modelo Whisper...',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(
+    BuildContext context,
+    ColorScheme colorScheme,
+    TranscriptionProvider provider,
+  ) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: colorScheme.error),
+            const SizedBox(height: 16),
+            Text(
+              'Error en la transcripcion',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              provider.lastError ?? 'Error desconocido',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.outline,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _startTranscription,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

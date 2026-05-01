@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../core/database/app_database.dart' as db;
+import '../../../core/services/local_whisper_service.dart';
 import '../../../core/services/transcription_config.dart';
+import '../../../core/services/transcription_service.dart';
 import '../data/recording_repository.dart';
 import '../domain/recording.dart';
 
@@ -18,13 +20,27 @@ class TranscriptionProvider extends ChangeNotifier {
   String _transcriptionStatus = '';
   String get transcriptionStatus => _transcriptionStatus;
 
+  String? _lastError;
+  String? get lastError => _lastError;
+
+  bool _isModelDownloading = false;
+  bool get isModelDownloading => _isModelDownloading;
+
+  double _downloadProgress = 0;
+  double get downloadProgress => _downloadProgress;
+
   Future<void> transcribeRecording(String recordingId) async {
     _isTranscribing = true;
+    _lastError = null;
     _transcriptionStatus = 'Preparando transcripcion...';
+    _log('transcribe_start recording=$recordingId engine=${_config.engine.name}');
     notifyListeners();
 
     try {
       final recording = await _repository.getById(recordingId);
+      if (recording == null) {
+        throw TranscriptionException('Grabacion no encontrada');
+      }
 
       await _repository.update(
         recording.copyWith(
@@ -33,11 +49,33 @@ class TranscriptionProvider extends ChangeNotifier {
         ),
       );
 
+      final service = _config.createService();
+
+      if (_config.engine == TranscriptionEngine.local) {
+        _isModelDownloading = true;
+        _downloadProgress = 0.1;
+        _transcriptionStatus = 'Verificando modelo local...';
+        notifyListeners();
+
+        final available = await service.isAvailable();
+        if (!available) {
+          _transcriptionStatus = 'Descargando modelo Whisper...';
+          _downloadProgress = 0.3;
+          notifyListeners();
+        } else {
+          _log('model_already_available');
+        }
+        _isModelDownloading = false;
+        _downloadProgress = 0;
+      }
+
       _transcriptionStatus = 'Transcribiendo con ${_config.engine.name}...';
+      _log('calling_transcribe audio=${recording.audioPath}');
       notifyListeners();
 
-      final service = _config.createService();
       final result = await service.transcribe(recording.audioPath);
+
+      _log('transcribe_ok text_length=${result.text.length} segments=${result.segments.length}');
 
       final database = await _appDb.database;
       final transcriptionId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -73,19 +111,26 @@ class TranscriptionProvider extends ChangeNotifier {
       );
 
       _transcriptionStatus = 'Transcripcion completada';
-    } catch (e) {
+      _log('transcribe_completed');
+    } catch (e, st) {
+      _lastError = e.toString();
       _transcriptionStatus = 'Error: $e';
+      _log('transcribe_error: $e\n$st');
       try {
         final recording = await _repository.getById(recordingId);
-        await _repository.update(
-          recording.copyWith(
-            status: RecordingStatus.failed,
-            updatedAt: DateTime.now(),
-          ),
-        );
+        if (recording != null) {
+          await _repository.update(
+            recording.copyWith(
+              status: RecordingStatus.failed,
+              updatedAt: DateTime.now(),
+            ),
+          );
+        }
       } catch (_) {}
     } finally {
       _isTranscribing = false;
+      _isModelDownloading = false;
+      _downloadProgress = 0;
       notifyListeners();
     }
   }
@@ -145,5 +190,9 @@ class TranscriptionProvider extends ChangeNotifier {
       buffer.writeln('- ${sentences[i].trim()}');
     }
     return buffer.toString();
+  }
+
+  void _log(String message) {
+    debugPrint('[TranscriptionProvider] $message');
   }
 }

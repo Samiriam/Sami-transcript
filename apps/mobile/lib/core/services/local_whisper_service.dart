@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
@@ -16,19 +17,35 @@ class LocalWhisperService implements TranscriptionService {
   @override
   Future<bool> isAvailable() async {
     try {
-      final directory = Platform.isAndroid
-          ? await getApplicationSupportDirectory()
-          : await getLibraryDirectory();
-      final modelFile = File(_model.getPath(directory.path));
-      return modelFile.existsSync();
-    } catch (_) {
+      final dir = await _modelDir();
+      final modelFile = File(_model.getPath(dir));
+      final exists = modelFile.existsSync();
+      _log('isAvailable -> $exists (path: ${modelFile.path})');
+      return exists;
+    } catch (e) {
+      _log('isAvailable error: $e');
       return false;
     }
   }
 
+  Future<String> _modelDir() async {
+    final directory = Platform.isAndroid
+        ? await getApplicationSupportDirectory()
+        : await getLibraryDirectory();
+    return directory.path;
+  }
+
   @override
   Future<TranscriptionResult> transcribe(String audioPath) async {
+    _log('transcribe_start audio=$audioPath model=${_model.modelName}');
+
     try {
+      final modelDir = await _modelDir();
+      final modelFile = File(_model.getPath(modelDir));
+      if (!modelFile.existsSync()) {
+        _log('model_not_found, descargando...');
+      }
+
       final whisper = Whisper(model: _model);
 
       final result = await whisper.transcribe(
@@ -38,6 +55,8 @@ class LocalWhisperService implements TranscriptionService {
           isTranslate: false,
         ),
       );
+
+      _log('transcribe_end text_length=${result.text.length}');
 
       final segments = <TranscriptSegment>[];
       if (result.segments != null) {
@@ -58,9 +77,14 @@ class LocalWhisperService implements TranscriptionService {
         language: 'es',
         segments: segments,
       );
-    } catch (e) {
+    } catch (e, st) {
+      _log('transcribe_error: $e\n$st');
       throw TranscriptionException('Error en transcripcion local: $e');
     }
+  }
+
+  void _log(String message) {
+    debugPrint('[LocalWhisper] $message');
   }
 }
 
