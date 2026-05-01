@@ -1,5 +1,44 @@
 # Bitacora Tecnica — Sami Transcribe
 
+## 2026-05-01 (Issues 0001-0005: Bug fixes, ModelManager, Play Store prep)
+
+### Hecho
+- **Issue 0001 (resuelto):** Bug UI en blanco tras transcripcion. Causa raiz: descarga del modelo no tenia verificacion ni manejo de error visible.
+  - Solucion: Pantalla de error con reintento, `lastError` expuesto al UI, verificacion de modelo antes de transcribir.
+- **Issue 0002 (resuelto):** Feedback de progreso y logging estructurado.
+  - Solucion: `LinearProgressIndicator` durante descarga, logs `[LocalWhisper]` y `[TranscriptionProvider]` con download_start, download_progress, download_complete, transcribe_start, transcribe_end, transcribe_error.
+- **Issue 0003 (resuelto):** ModelManager implementado (`model_manager.dart`).
+  - `isAvailable()`: verifica existencia y tamano minimo del archivo modelo.
+  - `ensureModel()`: descarga con callback de progreso y eliminacion de corruptos.
+  - `deleteModel()`, `getModelInfo()`, `ModelInfo`.
+  - `LocalWhisperService` delega a `ModelManager`.
+- **Issue 0005 (parcial):** Preparacion Play Store.
+  - Namespace cambiado de `com.example.sami_transcribe` a `com.sami.transcribe`.
+  - `MainActivity.kt` movida al paquete `com.sami.transcribe`.
+  - `PRIVACY_POLICY.md` creada.
+  - Pendiente: signing config release, AAB, capturas de pantalla, crash reporting.
+
+### No aplica / Pendiente
+- Issue 0004 (tests de integracion): no implementado. Requiere `integration_test/` y mocks.
+- Issue 0005: falta signing config, AAB build, capturas, ficha Play Store.
+
+### Archivos nuevos
+- `apps/mobile/lib/core/services/model_manager.dart`
+- `PRIVACY_POLICY.md`
+- `issues/0001` a `0005`
+
+### Archivos modificados
+- `local_whisper_service.dart`: delega a ModelManager
+- `transcription_provider.dart`: usa ensureModel con progreso real, lastError, WhisperModel
+- `transcription_screen.dart`: pantalla error con reintento, progress bar descarga
+- `audio_recorder_service.dart`: crea directorio antes de grabar
+- `android/app/build.gradle.kts`: namespace y applicationId
+- `android/app/src/main/kotlin/com/sami/transcribe/MainActivity.kt`
+
+### Verificacion
+- `flutter analyze`: 0 errores, 0 warnings, 2 infos (deprecated Radio)
+- `flutter build apk --debug`: exitoso en 164s (primera build con nuevo namespace)
+
 ## 2026-05-01 (Build APK de prueba Android)
 
 ### Hecho

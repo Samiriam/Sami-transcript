@@ -1,8 +1,8 @@
 # Plan de Trabajo — Sami Transcribe
 
-> Ultima actualizacion: 2026-04-30  
-> Estado: **Fase 2 — Sprint 2 implementado, faltan importacion y exportacion**  
-> Enfoque actual: **beta personal de un solo usuario**
+> Ultima actualizacion: 2026-05-01  
+> Estado: **Fase 2 — Issues 0001-0003 resueltos, preparando Play Store**  
+> Enfoque actual: **beta personal con ruta a Play Store**
 
 ---
 
@@ -210,10 +210,14 @@ Cuando la beta personal esté estable, el siguiente camino será:
 
 ## 8. Proxima accion inmediata
 
-- El programador debe reconstruir la estructura Flutter/Android valida del proyecto (`flutter create` o equivalente) sin perder `lib/`, `test/` y `pubspec.yaml` actuales.
-- Luego debe reintentar `flutter analyze` y `flutter build apk --debug`.
-- Si el build ya genera APK, continuar con prueba en dispositivo Android.
-- Despues retomar importacion de audios externos.
+- [x] Estructura Flutter/Android regenerada con `flutter create --platforms=android`.
+- [x] APK debug compilada y probada.
+- [x] Issues 0001-0003 resueltos (bug transcripcion, logging, ModelManager).
+- [x] Namespace Play Store (`com.sami.transcribe`) y PRIVACY_POLICY.md listos.
+- [ ] Implementar importacion de audios externos (Sprint 2 pendiente).
+- [ ] Agregar tests de integracion (Issue 0004).
+- [ ] Configurar signing release y generar AAB para Play Store (Issue 0005).
+- [ ] Probar en dispositivo Android real.
 
 ## 9. Bitácora
 
@@ -224,6 +228,7 @@ Cuando la beta personal esté estable, el siguiente camino será:
 | 2026-04-29 | Sprint 1 implementado: DB, grabacion, UI, tema | Codigo funcional pendiente de prueba en dispositivo |
 | 2026-04-30 | Sprint 2 implementado: Whisper local y APIs configurables | Base de transcripcion lista |
 | 2026-04-30 | Intento de build APK | Bloqueado por estructura Flutter/Android no inicializada |
+| 2026-05-01 | Build APK exitoso, namespace Play Store, ModelManager, fixes bugs | Issues 0001-0003 resueltos, 0005 parcial |
 
 ---
 
