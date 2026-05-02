@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/services/app_logger.dart';
+import '../../../core/services/post_processing_service.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/openai_compatible_model_discovery_service.dart';
 import '../../../core/services/transcription_config.dart';
@@ -169,6 +170,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ],
+          _SectionHeader(title: 'Post-procesado'),
+          SwitchListTile(
+            secondary: const Icon(Icons.auto_fix_high),
+            title: const Text('Mejorar coherencia'),
+            subtitle: const Text(
+              'Limpia muletillas, une segmentos cortos y mejora puntuacion del texto transcrito.',
+            ),
+            value: config.postProcessingEnabled,
+            onChanged: (value) => config.setPostProcessingEnabled(value),
+          ),
+          if (config.postProcessingEnabled)
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Nivel de post-procesado'),
+              subtitle: Text(_postProcessingLevelLabel(config.postProcessingLevel)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showPostProcessingLevelPicker(context, config),
+            ),
           _SectionHeader(title: 'Grabacion'),
           ListTile(
             leading: const Icon(Icons.audiotrack_outlined),
@@ -220,6 +239,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'small' => 'Small (~460 MB, alto consumo; puede cerrar la app)',
       _ => model,
     };
+  }
+
+  String _postProcessingLevelLabel(PostProcessingLevel level) {
+    return switch (level) {
+      PostProcessingLevel.none => 'Ninguno',
+      PostProcessingLevel.low => 'Bajo (limpieza basica)',
+      PostProcessingLevel.medium => 'Medio (recomendado)',
+      PostProcessingLevel.high => 'Alto (maxima mejora)',
+    };
+  }
+
+  void _showPostProcessingLevelPicker(
+      BuildContext context, TranscriptionConfig config) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Nivel de post-procesado',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              for (final level in PostProcessingLevel.values)
+                ListTile(
+                  title: Text(_postProcessingLevelLabel(level)),
+                  trailing: config.postProcessingLevel == level
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () {
+                    config.setPostProcessingLevel(level);
+                    Navigator.of(ctx).pop();
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showThemePicker(BuildContext context, ThemeService service) {

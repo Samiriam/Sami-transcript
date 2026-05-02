@@ -11,6 +11,7 @@ import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import '../../../core/database/app_database.dart' as db;
 import '../../../core/services/app_logger.dart';
+import '../../../core/services/post_processing_service.dart';
 import '../../../core/storage/local_paths.dart';
 import '../../../core/services/local_whisper_service.dart';
 import '../../../core/services/model_manager.dart';
@@ -27,6 +28,7 @@ class TranscriptionProvider extends ChangeNotifier {
   final db.AppDatabase _appDb;
   final TranscriptionConfig _config;
   final ModelManager _modelManager;
+  final PostProcessingService _postProcessor = PostProcessingService();
 
   bool _isTranscribing = false;
   bool get isTranscribing => _isTranscribing;
@@ -129,6 +131,24 @@ class TranscriptionProvider extends ChangeNotifier {
       _log(
           'transcribe_ok text_length=${result.text.length} segments=${result.segments.length}');
 
+      var processedText = result.text;
+      var processedSegments = result.segments;
+
+      if (_config.postProcessingEnabled) {
+        _transcriptionStatus = 'Mejorando coherencia del texto...';
+        notifyListeners();
+
+        final processed = _postProcessor.process(
+          result.text,
+          result.segments,
+          level: _config.postProcessingLevel,
+        );
+        processedText = processed.text;
+        processedSegments = processed.segments;
+        _log(
+            'postprocessed level=${processed.level.name} elapsed=${processed.elapsedMs}ms text_length=${processedText.length}');
+      }
+
       final database = await _appDb.database;
       final transcriptionId = DateTime.now().millisecondsSinceEpoch.toString();
 
@@ -140,14 +160,14 @@ class TranscriptionProvider extends ChangeNotifier {
       batch.insert('transcriptions', {
         'id': transcriptionId,
         'recording_id': recordingId,
-        'full_text': result.text,
+        'full_text': processedText,
         'language': result.language,
         'model_used': result.engine.name,
         'created_at': createdAt,
       });
 
-      for (var i = 0; i < result.segments.length; i++) {
-        final segment = result.segments[i];
+      for (var i = 0; i < processedSegments.length; i++) {
+        final segment = processedSegments[i];
         batch.insert('segments', {
           'id': '${transcriptionId}_$i',
           'transcription_id': transcriptionId,

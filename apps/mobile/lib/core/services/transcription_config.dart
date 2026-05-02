@@ -6,6 +6,7 @@ import 'assemblyai_service.dart';
 import 'local_whisper_service.dart';
 import 'openai_compatible_model_discovery_service.dart';
 import 'openai_service.dart';
+import 'post_processing_service.dart';
 import 'transcription_service.dart';
 
 class TranscriptionConfig extends ChangeNotifier {
@@ -21,6 +22,8 @@ class TranscriptionConfig extends ChangeNotifier {
   static const _keySummaryOpenAiModel = 'summary_openai_model';
   static const _keySummaryAssemblyAiKey = 'summary_assemblyai_api_key';
   static const _keySummaryOpenAiPresetId = 'summary_openai_preset_id';
+  static const _keyPostProcessingEnabled = 'post_processing_enabled';
+  static const _keyPostProcessingLevel = 'post_processing_level';
 
   TranscriptionEngine _engine = TranscriptionEngine.local;
   String _openAiKey = '';
@@ -34,6 +37,8 @@ class TranscriptionConfig extends ChangeNotifier {
   String _summaryOpenAiModel = 'gpt-4o-mini';
   String _summaryAssemblyAiKey = '';
   String _summaryOpenAiPresetId = 'openai';
+  bool _postProcessingEnabled = true;
+  PostProcessingLevel _postProcessingLevel = PostProcessingLevel.medium;
 
   TranscriptionEngine get engine => _engine;
   String get openAiKey => _openAiKey;
@@ -47,6 +52,8 @@ class TranscriptionConfig extends ChangeNotifier {
   String get summaryOpenAiModel => _summaryOpenAiModel;
   String get summaryAssemblyAiKey => _summaryAssemblyAiKey;
   String get summaryOpenAiPresetId => _summaryOpenAiPresetId;
+  bool get postProcessingEnabled => _postProcessingEnabled;
+  PostProcessingLevel get postProcessingLevel => _postProcessingLevel;
   List<OpenAiCompatiblePreset> get summaryOpenAiPresets =>
       OpenAiCompatibleModelDiscoveryService.presets;
   OpenAiCompatiblePreset get selectedSummaryOpenAiPreset =>
@@ -82,6 +89,12 @@ class TranscriptionConfig extends ChangeNotifier {
     _summaryAssemblyAiKey = prefs.getString(_keySummaryAssemblyAiKey) ?? '';
     _summaryOpenAiPresetId =
         prefs.getString(_keySummaryOpenAiPresetId) ?? 'openai';
+    _postProcessingEnabled =
+        prefs.getBool(_keyPostProcessingEnabled) ?? true;
+    _postProcessingLevel = PostProcessingLevel.values.firstWhere(
+      (e) => e.name == (prefs.getString(_keyPostProcessingLevel) ?? 'medium'),
+      orElse: () => PostProcessingLevel.medium,
+    );
   }
 
   Future<void> setEngine(TranscriptionEngine engine) async {
@@ -155,6 +168,20 @@ class TranscriptionConfig extends ChangeNotifier {
     _summaryAssemblyAiKey = apiKey;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keySummaryAssemblyAiKey, apiKey);
+    notifyListeners();
+  }
+
+  Future<void> setPostProcessingEnabled(bool enabled) async {
+    _postProcessingEnabled = enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyPostProcessingEnabled, enabled);
+    notifyListeners();
+  }
+
+  Future<void> setPostProcessingLevel(PostProcessingLevel level) async {
+    _postProcessingLevel = level;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyPostProcessingLevel, level.name);
     notifyListeners();
   }
 
