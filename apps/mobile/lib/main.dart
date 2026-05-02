@@ -1,24 +1,19 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
 import 'app/sami_app.dart';
+import 'core/services/app_logger.dart';
 
 void main() {
-  runZonedGuarded(() {
+  runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
-    FlutterError.onError = (details) {
-      FlutterError.presentError(details);
-      debugPrint(
-          '[FlutterError] ${details.exceptionAsString()}\n${details.stack}');
-    };
-    PlatformDispatcher.instance.onError = (error, stack) {
-      debugPrint('[PlatformError] $error\n$stack');
-      return true;
-    };
+    final logger = AppLogger.instance;
+    await logger.init();
+    AppLogger.initGlobalErrorHandlers();
+    logger.info('Main', 'App starting');
     runApp(SamiApp());
   }, (error, stack) {
-    debugPrint('[ZoneError] $error\n$stack');
+    AppLogger.instance.error('ZoneError', error.toString(), stack.toString());
   });
 }

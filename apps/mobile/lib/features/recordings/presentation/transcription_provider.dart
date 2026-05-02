@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import '../../../core/database/app_database.dart' as db;
+import '../../../core/services/app_logger.dart';
 import '../../../core/storage/local_paths.dart';
 import '../../../core/services/local_whisper_service.dart';
 import '../../../core/services/model_manager.dart';
@@ -52,6 +53,13 @@ class TranscriptionProvider extends ChangeNotifier {
         (_transcriptionElapsedSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
+
+  SummaryStatus _summaryStatus = SummaryStatus.idle;
+  SummaryStatus get summaryStatus => _summaryStatus;
+  String _summaryStatusMessage = '';
+  String get summaryStatusMessage => _summaryStatusMessage;
+  String? _summaryError;
+  String? get summaryError => _summaryError;
 
   Future<void> transcribeRecording(String recordingId) async {
     _isTranscribing = true;
@@ -326,13 +334,79 @@ class TranscriptionProvider extends ChangeNotifier {
     final text = await getTranscriptionText(recordingId);
     if (text == null || text.isEmpty) return null;
 
+    _summaryError = null;
+    _summaryStatusMessage = 'Preparando resumen...';
+
     final summaryService = _config.createSummaryService();
     if (summaryService == null) {
-      return _localSummary(text);
+      _summaryStatus = SummaryStatus.generating;
+      _summaryStatusMessage = 'Generando resumen local...';
+      notifyListeners();
+      try {
+        final result = _localSummary(text);
+        _summaryStatus = SummaryStatus.done;
+        _summaryStatusMessage = 'Resumen local completado';
+        AppLogger.instance.info('Summary', 'Local summary generated (${result.length} chars)');
+        notifyListeners();
+        return result;
+      } catch (e, st) {
+        _summaryStatus = SummaryStatus.error;
+        _summaryError = 'Error en resumen local: $e';
+        _summaryStatusMessage = _summaryError!;
+        AppLogger.instance.error('Summary', 'Local summary failed: $e', st.toString());
+        notifyListeners();
+        return null;
+      }
     }
 
-    final result = await summaryService.summarize(text);
-    return result.summary;
+    _summaryStatus = SummaryStatus.connecting;
+    _summaryStatusMessage = 'Conectando a ${_config.summaryEngine.name}...';
+    AppLogger.instance.info('Summary', 'Connecting to ${_config.summaryEngine.name}');
+    notifyListeners();
+
+    try {
+      _summaryStatus = SummaryStatus.generating;
+      _summaryStatusMessage = 'Generando resumen con ${_config.summaryEngine.name}...';
+      notifyListeners();
+
+      final result = await summaryService
+          .summarize(text)
+          .timeout(const Duration(minutes: 5), onTimeout: () {
+        throw SummaryTimeoutException(
+          'El resumen excedio 5 minutos. Verifica tu conexion o intenta con resumen local.',
+        );
+      });
+
+      _summaryStatus = SummaryStatus.done;
+      _summaryStatusMessage = 'Conexion exitosa. Resumen completado.';
+      AppLogger.instance.info('Summary', 'API summary generated (${result.summary.length} chars)');
+      notifyListeners();
+      return result.summary;
+    } on SummaryTimeoutException {
+      _summaryStatus = SummaryStatus.error;
+      _summaryError = 'Tiempo de espera agotado. Verifica tu conexion a internet.';
+      _summaryStatusMessage = _summaryError!;
+      AppLogger.instance.warning('Summary', 'Summary timed out, falling back to local');
+      notifyListeners();
+      return _localSummary(text);
+    } catch (e, st) {
+      _summaryStatus = SummaryStatus.error;
+      _summaryError = 'Error de API: $e';
+      _summaryStatusMessage = _summaryError!;
+      AppLogger.instance.error('Summary', 'API summary failed: $e', st.toString());
+      notifyListeners();
+
+      try {
+        final fallback = _localSummary(text);
+        _summaryStatus = SummaryStatus.doneWithFallback;
+        _summaryStatusMessage = 'Resumen local generado como alternativa (la API falló).';
+        AppLogger.instance.info('Summary', 'Fallback to local summary');
+        notifyListeners();
+        return fallback;
+      } catch (_) {
+        return null;
+      }
+    }
   }
 
   String _localSummary(String text) {
@@ -576,7 +650,7 @@ class TranscriptionProvider extends ChangeNotifier {
   }
 
   void _log(String message) {
-    debugPrint('[TranscriptionProvider] $message');
+    AppLogger.instance.info('TranscriptionProvider', message);
   }
 }
 
@@ -587,6 +661,24 @@ class TranscriptionTimeoutException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class SummaryTimeoutException implements Exception {
+  SummaryTimeoutException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+enum SummaryStatus {
+  idle,
+  connecting,
+  generating,
+  done,
+  doneWithFallback,
+  error,
 }
 
 enum ExportFormat {

@@ -1,5 +1,55 @@
 # Bitacora Tecnica — Sami Transcribe
 
+## 2026-05-02 (Mejoras de estabilidad, indicadores y logging)
+
+### Cambios implementados
+
+1. **AppLogger** (`core/services/app_logger.dart`)
+   - Servicio de logging persistente con rotacion automatica (512 KB max).
+   - Niveles: INFO, WARN, ERROR con timestamps.
+   - Buffer en memoria (500 entradas) + archivo `logs/app.log`.
+   - Integrado en `main.dart` como handler global de errores Dart/Platform.
+   - Viewer de logs accesible desde Ajustes > Depuracion > Ver Logs.
+   - Opcion de limpiar logs desde UI.
+
+2. **Resumen con fallback y timeout** (`transcription_provider.dart`)
+   - `generateSummary()` ahora tiene estados: idle, connecting, generating, done, doneWithFallback, error.
+   - Timeout de 5 minutos para APIs de resumen.
+   - Si la API falla, genera resumen local como alternativa automatica (estado `doneWithFallback`).
+   - Mensajes de estado en tiempo real: "Conectando...", "Generando resumen...", "Conexion exitosa."
+   - Boton "Reintentar" visible cuando hay error o fallback.
+
+3. **Badge de motor mejorado** (`transcription_screen.dart`)
+   - Badge con color coding: verde para IA cloud, azul/tertiary para local.
+   - Contenedor con fondo semitransparente y borde.
+   - Iconos diferenciados: `cloud_done_outlined` para IA, `phone_android` para local.
+   - Labels descriptivos: "Motor local (Whisper)", "Transcripcion con IA (OpenAI)".
+
+4. **Indicadores de resumen**
+   - Chip con motor de resumen (Local / IA OpenAI / IA AssemblyAI).
+   - Barra de progreso durante conexion.
+   - Tarjeta de error con icono y detalle del error HTTP.
+   - Aviso naranja cuando se uso fallback a resumen local.
+
+5. **Motor local con logging mejorado** (`local_whisper_service.dart`)
+   - `_log()` ahora usa `AppLogger` en vez de `debugPrint`.
+
+### Verificacion
+- `flutter analyze`: 0 errores, 6 infos (deprecation warnings pre-existentes de Flutter SDK).
+
+### Archivos modificados
+- `core/services/app_logger.dart` (nuevo)
+- `core/services/local_whisper_service.dart` (logging)
+- `main.dart` (integracion logger + error handlers)
+- `features/recordings/presentation/transcription_provider.dart` (summary status, fallback, timeout)
+- `features/recordings/presentation/transcription_screen.dart` (badges, status UI, retry)
+- `features/recordings/presentation/settings_screen.dart` (log viewer, clear logs)
+
+### Pendiente
+- Build APK con todos los cambios.
+- Prueba en dispositivo real.
+- Push a GitHub.
+
 ## 2026-05-02 (Ajuste final: reactivar modelo base y mantener API de resumen separada)
 
 ### Cambio solicitado
@@ -542,3 +592,42 @@
 - Todo avance, deuda, bloqueo, decisión técnica y cambio de alcance debe quedar registrado en los archivos de seguimiento del proyecto.
 - Prioridad de documentación: `BITACORA_TECNICA.md`, `PLAN_TRABAJO.md`, `PLAN_IMPLEMENTACION.md` y `README.md` cuando aplique.
 - Si cambia el enfoque del proyecto, el ajuste debe reflejarse primero en la documentación antes de seguir construyendo.
+## 2026-05-02 (Configuracion profesional de resumen OpenAI/OpenRouter y mitigacion final de Whisper)
+
+### Objetivo
+- Permitir configuracion robusta de resumen IA con URL base dinamica, API key, presets conocidos y discovery real de modelos desde `/models`.
+- Investigar y corregir el fallo de pantalla blanca en Whisper local con `base/small` al finalizar y devolver la transcripcion.
+
+### Implementado
+- Se agrego `openai_compatible_model_discovery_service.dart` con:
+  - directorio interno de presets: OpenAI, OpenRouter y personalizado;
+  - normalizacion de URL base;
+  - validacion de credenciales;
+  - discovery de modelos via `GET /models`;
+  - priorizacion de modelos `:free` en OpenRouter.
+- En ajustes de resumen:
+  - se reemplazo ingreso manual de modelo por selector dinamico poblado tras validacion;
+  - se prohibe guardar configuracion si no hubo validacion y modelo seleccionado;
+  - se mantiene URL base editable, sin hardcode operativo.
+- La configuracion de resumen OpenAI/OpenRouter queda independiente de la transcripcion.
+
+### Investigacion de crash Whisper
+- Hipotesis mas fuerte: el plugin `whisper_flutter_new` devuelve demasiado payload al finalizar con `base/small` y/o tiene fragilidad FFI al liberar la respuesta nativa.
+- Evidencia funcional: el fallo se da al final de la inferencia y no con `tiny`.
+
+### Mitigacion aplicada
+- Para `base` y superiores en Whisper local:
+  - `threads=1`, `nProcessors=1`;
+  - `isNoTimestamps=true` para reducir segmentos/timestamps en el payload devuelto.
+- `tiny` conserva segmentos/timestamps locales.
+
+### Verificacion
+- `flutter analyze`: sin errores; quedaron 6 infos deprecadas en widgets de formulario/radio del framework actual.
+- `flutter test`: exitoso.
+- `flutter build apk --debug`: compilo y genero el artefacto fuente `apps/mobile/build/app/outputs/apk/debug/app-debug.apk`, pero la copia final a `build/app/outputs/flutter-apk/app-debug.apk` volvio a fallar por archivo abierto/bloqueado.
+
+### Riesgo residual
+- La mitigacion reduce fuertemente el payload final y deberia ayudar con `base`, pero si el problema dominante es el bug FFI del paquete de terceros, el crash puede seguir ocurriendo en algunos equipos o modelos superiores.
+
+### Pendiente
+- Si el crash persiste con `base`, el siguiente paso serio es reemplazar o parchear el plugin Whisper nativo/FFI.

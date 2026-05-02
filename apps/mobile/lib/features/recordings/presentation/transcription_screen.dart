@@ -21,7 +21,6 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   List<Map<String, dynamic>> _segments = [];
   bool _isLoading = true;
   String? _summary;
-  bool _isSummarizing = false;
   bool _isEditing = false;
   final _editController = TextEditingController();
 
@@ -51,13 +50,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   }
 
   Future<void> _generateSummary() async {
-    setState(() => _isSummarizing = true);
     final provider = context.read<TranscriptionProvider>();
     final summary = await provider.generateSummary(widget.recording.id);
     if (!mounted) return;
     setState(() {
       _summary = summary;
-      _isSummarizing = false;
     });
   }
 
@@ -439,28 +436,45 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
 
   Widget _buildEngineBadge(BuildContext context) {
     final config = context.read<TranscriptionConfig>();
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final isLocal = config.engine == TranscriptionEngine.local;
     final label = switch (config.engine) {
-      TranscriptionEngine.local => 'Whisper Local',
-      TranscriptionEngine.openai => 'OpenAI API',
-      TranscriptionEngine.assemblyai => 'AssemblyAI',
+      TranscriptionEngine.local => 'Motor local (Whisper)',
+      TranscriptionEngine.openai => 'Transcripcion con IA (OpenAI)',
+      TranscriptionEngine.assemblyai => 'Transcripcion con IA (AssemblyAI)',
     };
     final icon = switch (config.engine) {
       TranscriptionEngine.local => Icons.phone_android,
-      TranscriptionEngine.openai => Icons.cloud,
-      TranscriptionEngine.assemblyai => Icons.cloud,
+      TranscriptionEngine.openai => Icons.cloud_done_outlined,
+      TranscriptionEngine.assemblyai => Icons.cloud_done_outlined,
     };
+    final badgeColor = isLocal ? colorScheme.tertiary : Colors.green;
+    final bgColor = isLocal
+        ? colorScheme.tertiaryContainer.withValues(alpha: 0.5)
+        : Colors.green.withValues(alpha: 0.1);
 
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(width: 6),
-        Text(
-          'Motor: $label',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: badgeColor),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: badgeColor,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -489,6 +503,10 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   }
 
   Widget _buildSummarySection(BuildContext context, ColorScheme colorScheme) {
+    final provider = context.watch<TranscriptionProvider>();
+    final isBusy = provider.summaryStatus == SummaryStatus.connecting ||
+        provider.summaryStatus == SummaryStatus.generating;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -500,23 +518,31 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
                     fontWeight: FontWeight.w600,
                   ),
             ),
+            const SizedBox(width: 8),
+            _buildSummaryEngineChip(context),
             const Spacer(),
-            if (_summary == null && !_isSummarizing)
+            if (_summary == null && !isBusy)
               TextButton.icon(
                 onPressed: _generateSummary,
                 icon: const Icon(Icons.auto_awesome, size: 18),
                 label: const Text('Generar resumen'),
               ),
+            if (provider.summaryStatus == SummaryStatus.error ||
+                provider.summaryStatus == SummaryStatus.doneWithFallback)
+              TextButton.icon(
+                onPressed: _generateSummary,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Reintentar'),
+              ),
           ],
         ),
         const SizedBox(height: 8),
-        if (_isSummarizing)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(),
-            ),
-          ),
+        if (isBusy) _buildSummaryProgress(context, provider),
+        if (provider.summaryStatus == SummaryStatus.error &&
+            provider.summaryError != null)
+          _buildSummaryError(context, provider),
+        if (provider.summaryStatus == SummaryStatus.doneWithFallback)
+          _buildFallbackNotice(context),
         if (_summary != null)
           Card(
             color: colorScheme.secondaryContainer.withValues(alpha: 0.3),
@@ -529,6 +555,129 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildSummaryEngineChip(BuildContext context) {
+    final config = context.read<TranscriptionConfig>();
+    final isLocal = config.summaryEngine == SummaryEngine.local;
+    final label = switch (config.summaryEngine) {
+      SummaryEngine.local => 'Local',
+      SummaryEngine.openai => 'IA (OpenAI)',
+      SummaryEngine.assemblyai => 'IA (AssemblyAI)',
+    };
+    final icon = isLocal ? Icons.phone_android : Icons.auto_awesome;
+    final color = isLocal ? Colors.blue : Colors.green;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontSize: 10,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryProgress(
+      BuildContext context, TranscriptionProvider provider) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    provider.summaryStatusMessage,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            if (provider.summaryStatus == SummaryStatus.connecting) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                backgroundColor: colorScheme.surfaceContainerHighest,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryError(
+      BuildContext context, TranscriptionProvider provider) {
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 16,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                provider.summaryError ?? 'Error desconocido',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFallbackNotice(BuildContext context) {
+    return Card(
+      color: Colors.orange.withValues(alpha: 0.1),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'La API fallo. Se genero un resumen local como alternativa.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.orange.shade700,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

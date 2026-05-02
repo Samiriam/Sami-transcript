@@ -4,6 +4,7 @@ import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import 'assemblyai_service.dart';
 import 'local_whisper_service.dart';
+import 'openai_compatible_model_discovery_service.dart';
 import 'openai_service.dart';
 import 'transcription_service.dart';
 
@@ -19,6 +20,7 @@ class TranscriptionConfig extends ChangeNotifier {
   static const _keySummaryOpenAiBaseUrl = 'summary_openai_base_url';
   static const _keySummaryOpenAiModel = 'summary_openai_model';
   static const _keySummaryAssemblyAiKey = 'summary_assemblyai_api_key';
+  static const _keySummaryOpenAiPresetId = 'summary_openai_preset_id';
 
   TranscriptionEngine _engine = TranscriptionEngine.local;
   String _openAiKey = '';
@@ -31,6 +33,7 @@ class TranscriptionConfig extends ChangeNotifier {
   String _summaryOpenAiBaseUrl = 'https://api.openai.com/v1';
   String _summaryOpenAiModel = 'gpt-4o-mini';
   String _summaryAssemblyAiKey = '';
+  String _summaryOpenAiPresetId = 'openai';
 
   TranscriptionEngine get engine => _engine;
   String get openAiKey => _openAiKey;
@@ -43,6 +46,14 @@ class TranscriptionConfig extends ChangeNotifier {
   String get summaryOpenAiBaseUrl => _summaryOpenAiBaseUrl;
   String get summaryOpenAiModel => _summaryOpenAiModel;
   String get summaryAssemblyAiKey => _summaryAssemblyAiKey;
+  String get summaryOpenAiPresetId => _summaryOpenAiPresetId;
+  List<OpenAiCompatiblePreset> get summaryOpenAiPresets =>
+      OpenAiCompatibleModelDiscoveryService.presets;
+  OpenAiCompatiblePreset get selectedSummaryOpenAiPreset =>
+      summaryOpenAiPresets.firstWhere(
+        (preset) => preset.id == _summaryOpenAiPresetId,
+        orElse: () => OpenAiCompatibleModelDiscoveryService.presets.first,
+      );
 
   bool get isOpenAiConfigured => _openAiKey.isNotEmpty;
   bool get isAssemblyAiConfigured => _assemblyAiKey.isNotEmpty;
@@ -69,6 +80,8 @@ class TranscriptionConfig extends ChangeNotifier {
     _summaryOpenAiModel =
         prefs.getString(_keySummaryOpenAiModel) ?? 'gpt-4o-mini';
     _summaryAssemblyAiKey = prefs.getString(_keySummaryAssemblyAiKey) ?? '';
+    _summaryOpenAiPresetId =
+        prefs.getString(_keySummaryOpenAiPresetId) ?? 'openai';
   }
 
   Future<void> setEngine(TranscriptionEngine engine) async {
@@ -118,10 +131,12 @@ class TranscriptionConfig extends ChangeNotifier {
     required String apiKey,
     String? baseUrl,
     String? model,
+    String? presetId,
   }) async {
     _summaryOpenAiKey = apiKey;
     _summaryOpenAiBaseUrl = baseUrl ?? _summaryOpenAiBaseUrl;
     _summaryOpenAiModel = model ?? _summaryOpenAiModel;
+    _summaryOpenAiPresetId = presetId ?? _summaryOpenAiPresetId;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keySummaryOpenAiKey, apiKey);
     if (baseUrl != null) {
@@ -129,6 +144,9 @@ class TranscriptionConfig extends ChangeNotifier {
     }
     if (model != null) {
       await prefs.setString(_keySummaryOpenAiModel, model);
+    }
+    if (presetId != null) {
+      await prefs.setString(_keySummaryOpenAiPresetId, presetId);
     }
     notifyListeners();
   }

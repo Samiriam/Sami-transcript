@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/services/app_logger.dart';
 import '../../../core/services/theme_service.dart';
+import '../../../core/services/openai_compatible_model_discovery_service.dart';
 import '../../../core/services/transcription_config.dart';
 import '../../../core/services/transcription_service.dart';
 import 'transcription_provider.dart';
@@ -57,7 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: Icon(Icons.memory_outlined),
               title: Text('Rendimiento local'),
               subtitle: Text(
-                'Tiny es el mas estable. Base puede funcionar en equipos mejores o con paciencia. Small sigue siendo riesgoso en telefonos antiguos.',
+                'Tiny es el mas estable. Base puede funcionar en equipos mejores o con paciencia. Para base/small la app desactiva segmentos locales para reducir cierres al finalizar.',
               ),
             ),
           ],
@@ -65,49 +67,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SummaryEngineSelector(config: config),
           if (config.summaryEngine == SummaryEngine.openai) ...[
             ListTile(
-              leading: const Icon(Icons.key),
-              title: const Text('API Key resumen'),
+              leading: const Icon(Icons.hub_outlined),
+              title: const Text('Proveedor y modelo de resumen'),
               subtitle: Text(
-                config.summaryOpenAiKey.isEmpty
-                    ? 'No configurada'
-                    : '${config.summaryOpenAiKey.substring(0, 8)}...',
+                '${config.selectedSummaryOpenAiPreset.label} · ${config.summaryOpenAiModel}\n${config.summaryOpenAiBaseUrl}',
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showApiKeyDialog(
-                context,
-                title: 'API Key resumen OpenAI/OpenRouter',
-                current: config.summaryOpenAiKey,
-                onSave: (value) => config.setSummaryOpenAiConfig(apiKey: value),
-              ),
+              onTap: () => _showSummaryProviderConfigDialog(context, config),
             ),
-            ListTile(
-              leading: const Icon(Icons.link),
-              title: const Text('URL base resumen'),
-              subtitle: Text(config.summaryOpenAiBaseUrl),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showApiKeyDialog(
-                context,
-                title: 'URL base resumen',
-                current: config.summaryOpenAiBaseUrl,
-                onSave: (value) => config.setSummaryOpenAiConfig(
-                  apiKey: config.summaryOpenAiKey,
-                  baseUrl: value,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.auto_awesome),
-              title: const Text('Modelo resumen'),
-              subtitle: Text(config.summaryOpenAiModel),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showApiKeyDialog(
-                context,
-                title: 'Modelo resumen OpenAI/OpenRouter',
-                current: config.summaryOpenAiModel,
-                onSave: (value) => config.setSummaryOpenAiConfig(
-                  apiKey: config.summaryOpenAiKey,
-                  model: value,
-                ),
+            const ListTile(
+              leading: Icon(Icons.info_outline),
+              title: Text('Discovery de modelos'),
+              subtitle: Text(
+                'El modelo de resumen se selecciona solo desde /models despues de validar credenciales. No se permite ingreso manual.',
               ),
             ),
           ],
@@ -213,6 +185,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.storage_outlined),
             title: const Text('Base de datos'),
             subtitle: const Text('SQLite local'),
+          ),
+          _SectionHeader(title: 'Depuracion'),
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Ver logs'),
+            subtitle: const Text('Registros de actividad y errores'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showLogViewer(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_sweep_outlined),
+            title: const Text('Limpiar logs'),
+            subtitle: const Text('Borrar registros de depuracion'),
+            onTap: () => _clearLogs(context),
           ),
         ],
       ),
@@ -401,6 +387,250 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
   }
+
+  Future<void> _showLogViewer(BuildContext context) async {
+    final logger = AppLogger.instance;
+    await logger.rotateIfNeeded();
+    final content = await logger.getLogContent();
+
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _LogViewerScreen(content: content),
+      ),
+    );
+  }
+
+  Future<void> _clearLogs(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Limpiar logs'),
+        content: const Text('Se borraran todos los registros de depuracion.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await AppLogger.instance.clearLogs();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Logs limpiados')),
+    );
+  }
+
+  Future<void> _showSummaryProviderConfigDialog(
+    BuildContext context,
+    TranscriptionConfig config,
+  ) async {
+    final discoveryService = OpenAiCompatibleModelDiscoveryService();
+    final apiKeyController =
+        TextEditingController(text: config.summaryOpenAiKey);
+    final baseUrlController =
+        TextEditingController(text: config.summaryOpenAiBaseUrl);
+    var selectedPresetId = config.summaryOpenAiPresetId;
+    var selectedModelId = config.summaryOpenAiModel;
+    var availableModels = <SummaryModelOption>[];
+    var isLoading = false;
+    var errorMessage = '';
+    var validated = false;
+
+    Future<void> validateAndLoadModels(StateSetter setDialogState) async {
+      setDialogState(() {
+        isLoading = true;
+        errorMessage = '';
+        validated = false;
+        availableModels = [];
+      });
+      try {
+        final preset = config.summaryOpenAiPresets.firstWhere(
+          (item) => item.id == selectedPresetId,
+        );
+        final models = await discoveryService.fetchModels(
+          baseUrl: baseUrlController.text,
+          apiKey: apiKeyController.text,
+          prioritizeFreeModels: preset.prioritizeFreeModels,
+        );
+        final selected = models.any((model) => model.id == selectedModelId)
+            ? selectedModelId
+            : models.first.id;
+        setDialogState(() {
+          availableModels = models;
+          selectedModelId = selected;
+          validated = true;
+        });
+      } catch (e) {
+        setDialogState(() {
+          errorMessage = e.toString();
+        });
+      } finally {
+        setDialogState(() {
+          isLoading = false;
+        });
+      }
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Configurar resumen OpenAI/OpenRouter'),
+              content: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: selectedPresetId,
+                        decoration: const InputDecoration(
+                          labelText: 'Directorio de proveedor',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: config.summaryOpenAiPresets
+                            .map(
+                              (preset) => DropdownMenuItem(
+                                value: preset.id,
+                                child: Text(preset.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          final preset = config.summaryOpenAiPresets.firstWhere(
+                            (item) => item.id == value,
+                          );
+                          setDialogState(() {
+                            selectedPresetId = value;
+                            if (preset.baseUrl.isNotEmpty) {
+                              baseUrlController.text = preset.baseUrl;
+                            }
+                            validated = false;
+                            errorMessage = '';
+                            availableModels = [];
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        config.summaryOpenAiPresets
+                            .firstWhere((item) => item.id == selectedPresetId)
+                            .description,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: baseUrlController,
+                        decoration: const InputDecoration(
+                          labelText: 'URL base compatible',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => setDialogState(() {
+                          validated = false;
+                          errorMessage = '';
+                          availableModels = [];
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: apiKeyController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'API Key',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => setDialogState(() {
+                          validated = false;
+                          errorMessage = '';
+                          availableModels = [];
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: isLoading
+                            ? null
+                            : () => validateAndLoadModels(setDialogState),
+                        icon: const Icon(Icons.cloud_sync_outlined),
+                        label: Text(
+                          isLoading
+                              ? 'Validando...'
+                              : 'Validar y cargar modelos',
+                        ),
+                      ),
+                      if (errorMessage.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          errorMessage,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                      if (validated && availableModels.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          value: selectedModelId,
+                          decoration: const InputDecoration(
+                            labelText: 'Modelo de resumen',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: availableModels
+                              .map(
+                                (model) => DropdownMenuItem(
+                                  value: model.id,
+                                  child: Text(model.displayName),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() => selectedModelId = value);
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: !validated || selectedModelId.isEmpty
+                      ? null
+                      : () async {
+                          await config.setSummaryOpenAiConfig(
+                            apiKey: apiKeyController.text.trim(),
+                            baseUrl: baseUrlController.text.trim(),
+                            model: selectedModelId,
+                            presetId: selectedPresetId,
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                        },
+                  child: const Text('Guardar configuracion'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 class _SummaryEngineSelector extends StatelessWidget {
@@ -518,6 +748,43 @@ class _SectionHeader extends StatelessWidget {
               color: Theme.of(context).colorScheme.primary,
               fontWeight: FontWeight.w600,
             ),
+      ),
+    );
+  }
+}
+
+class _LogViewerScreen extends StatelessWidget {
+  const _LogViewerScreen({required this.content});
+
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = content.split('\n');
+    return Scaffold(
+      appBar: AppBar(title: const Text('Logs de la app')),
+      body: ListView.builder(
+        itemCount: lines.length,
+        itemBuilder: (context, index) {
+          final line = lines[index];
+          final isError = line.contains('[ERROR]');
+          final isWarning = line.contains('[WARN]');
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
+            child: SelectableText(
+              line,
+              style: TextStyle(
+                fontSize: 11,
+                fontFamily: 'monospace',
+                color: isError
+                    ? Theme.of(context).colorScheme.error
+                    : isWarning
+                        ? Colors.orange
+                        : null,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
