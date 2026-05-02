@@ -3,8 +3,11 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../domain/recording.dart';
+import 'transcription_provider.dart';
 import 'transcription_screen.dart';
 
 class RecordingDetailScreen extends StatefulWidget {
@@ -95,28 +98,31 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
                 case 'transcribe':
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => TranscriptionScreen(recording: widget.recording),
+                      builder: (_) =>
+                          TranscriptionScreen(recording: widget.recording),
                     ),
                   );
                   break;
                 case 'export':
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Exportacion disponible en Sprint 3'),
-                    ),
-                  );
+                  _exportTranscription(context);
+                  break;
+                case 'share_audio':
+                  _shareAudio(context);
                   break;
               }
             },
-            itemBuilder:
-                (_) => [
-                  const PopupMenuItem(value: 'rename', child: Text('Renombrar')),
-                  const PopupMenuItem(
-                    value: 'transcribe',
-                    child: Text('Transcribir'),
-                  ),
-                  const PopupMenuItem(value: 'export', child: Text('Exportar')),
-                ],
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'rename', child: Text('Renombrar')),
+              const PopupMenuItem(
+                value: 'transcribe',
+                child: Text('Transcribir'),
+              ),
+              const PopupMenuItem(
+                value: 'share_audio',
+                child: Text('Compartir audio'),
+              ),
+              const PopupMenuItem(value: 'export', child: Text('Exportar')),
+            ],
           ),
         ],
       ),
@@ -139,22 +145,22 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
                     Text(
                       r.title,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       dateFormat.format(r.createdAt),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Duracion: ${r.formattedDuration}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -165,11 +171,10 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
                         ),
                         Expanded(
                           child: Slider(
-                            value:
-                                _duration.inMilliseconds > 0
-                                    ? _position.inMilliseconds /
-                                        _duration.inMilliseconds
-                                    : 0,
+                            value: _duration.inMilliseconds > 0
+                                ? _position.inMilliseconds /
+                                    _duration.inMilliseconds
+                                : 0,
                             onChanged: (value) {
                               final pos = Duration(
                                 milliseconds:
@@ -221,8 +226,8 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
             Text(
               'Informacion',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             const SizedBox(height: 8),
             _InfoRow(label: 'Estado', value: _statusLabel(r.status)),
@@ -256,34 +261,73 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
     };
   }
 
+  Future<void> _exportTranscription(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final provider = context.read<TranscriptionProvider>();
+      final path = await provider.saveExportAs(
+        widget.recording.id,
+        recordingTitle: widget.recording.title,
+        format: ExportFormat.pdf,
+      );
+      if (path == null) return;
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Transcripcion guardada en $path')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('No se pudo exportar la transcripcion: $e')),
+      );
+    }
+  }
+
+  Future<void> _shareAudio(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final audioFile = File(widget.recording.audioPath);
+    if (!await audioFile.exists()) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text('El archivo de audio no existe en el dispositivo')),
+      );
+      return;
+    }
+
+    await Share.shareXFiles(
+      [XFile(audioFile.path)],
+      text: 'Audio de ${widget.recording.title}',
+    );
+  }
+
   void _showRenameDialog(BuildContext context) {
     final controller = TextEditingController(text: widget.recording.title);
     showDialog(
       context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Renombrar grabacion'),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Nombre',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                },
-                child: const Text('Guardar'),
-              ),
-            ],
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renombrar grabacion'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nombre',
+            border: OutlineInputBorder(),
           ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -305,8 +349,8 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ),
           Expanded(

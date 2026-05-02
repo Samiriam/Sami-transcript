@@ -96,10 +96,8 @@ class AssemblyAITranscriptionService implements TranscriptionService {
           for (final u in utterances) {
             segments.add(
               TranscriptSegment(
-                startTime:
-                    ((u['start'] as num).toDouble()) / 1000.0,
-                endTime:
-                    ((u['end'] as num).toDouble()) / 1000.0,
+                startTime: ((u['start'] as num).toDouble()) / 1000.0,
+                endTime: ((u['end'] as num).toDouble()) / 1000.0,
                 text: u['text'] as String? ?? '',
                 speaker: u['speaker'] as String?,
               ),
@@ -112,8 +110,7 @@ class AssemblyAITranscriptionService implements TranscriptionService {
           engine: engine,
           language: json['language_code'] as String? ?? 'es',
           segments: segments,
-          durationSeconds:
-              (json['audio_duration'] as num?)?.toDouble(),
+          durationSeconds: (json['audio_duration'] as num?)?.toDouble(),
         );
       }
 
@@ -129,7 +126,8 @@ class AssemblyAITranscriptionService implements TranscriptionService {
 }
 
 class AssemblyAISummaryService implements SummaryService {
-  AssemblyAISummaryService({required this.apiKey, this.baseUrl = 'https://api.assemblyai.com/v2'});
+  AssemblyAISummaryService(
+      {required this.apiKey, this.baseUrl = 'https://api.assemblyai.com/v2'});
 
   final String apiKey;
   final String baseUrl;
@@ -152,7 +150,8 @@ class AssemblyAISummaryService implements SummaryService {
 
     if (response.statusCode != 200) {
       final fallback = _localSummary(fullText);
-      return SummaryResult(summary: fallback, engine: TranscriptionEngine.assemblyai);
+      return SummaryResult(
+          summary: fallback, engine: TranscriptionEngine.assemblyai);
     }
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -163,7 +162,10 @@ class AssemblyAISummaryService implements SummaryService {
   }
 
   String _localSummary(String text) {
-    final sentences = text.split(RegExp(r'[.!?]+')).where((s) => s.trim().isNotEmpty).toList();
+    final sentences = text
+        .split(RegExp(r'[.!?]+'))
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
     if (sentences.length <= 3) return text;
     return '${sentences.take(5).join('. ')}.';
   }

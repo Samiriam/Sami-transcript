@@ -14,13 +14,15 @@ class TranscriptionConfig extends ChangeNotifier {
   static const _keyOpenAiModel = 'openai_model';
   static const _keyAssemblyAiKey = 'assemblyai_api_key';
   static const _keyWhisperModel = 'whisper_model';
+  static const _keySummaryEngine = 'summary_engine';
 
   TranscriptionEngine _engine = TranscriptionEngine.local;
   String _openAiKey = '';
   String _openAiBaseUrl = 'https://api.openai.com/v1';
   String _openAiModel = 'whisper-1';
   String _assemblyAiKey = '';
-  String _whisperModel = 'base';
+  String _whisperModel = 'tiny';
+  SummaryEngine _summaryEngine = SummaryEngine.local;
 
   TranscriptionEngine get engine => _engine;
   String get openAiKey => _openAiKey;
@@ -28,6 +30,7 @@ class TranscriptionConfig extends ChangeNotifier {
   String get openAiModel => _openAiModel;
   String get assemblyAiKey => _assemblyAiKey;
   String get whisperModel => _whisperModel;
+  SummaryEngine get summaryEngine => _summaryEngine;
 
   bool get isOpenAiConfigured => _openAiKey.isNotEmpty;
   bool get isAssemblyAiConfigured => _assemblyAiKey.isNotEmpty;
@@ -43,7 +46,11 @@ class TranscriptionConfig extends ChangeNotifier {
         prefs.getString(_keyOpenAiBaseUrl) ?? 'https://api.openai.com/v1';
     _openAiModel = prefs.getString(_keyOpenAiModel) ?? 'whisper-1';
     _assemblyAiKey = prefs.getString(_keyAssemblyAiKey) ?? '';
-    _whisperModel = prefs.getString(_keyWhisperModel) ?? 'base';
+    _whisperModel = prefs.getString(_keyWhisperModel) ?? 'tiny';
+    _summaryEngine = SummaryEngine.values.firstWhere(
+      (e) => e.name == (prefs.getString(_keySummaryEngine) ?? 'local'),
+      orElse: () => SummaryEngine.local,
+    );
   }
 
   Future<void> setEngine(TranscriptionEngine engine) async {
@@ -82,31 +89,55 @@ class TranscriptionConfig extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setSummaryEngine(SummaryEngine engine) async {
+    _summaryEngine = engine;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySummaryEngine, engine.name);
+    notifyListeners();
+  }
+
   TranscriptionService createService() {
     return switch (_engine) {
       TranscriptionEngine.local => LocalWhisperService(
-        model: _parseWhisperModel(_whisperModel),
-      ),
+          model: _parseWhisperModel(_whisperModel),
+        ),
       TranscriptionEngine.openai => OpenAITranscriptionService(
-        apiKey: _openAiKey,
-        baseUrl: _openAiBaseUrl,
-        model: _openAiModel,
-      ),
+          apiKey: _openAiKey,
+          baseUrl: _openAiBaseUrl,
+          model: _openAiModel,
+        ),
       TranscriptionEngine.assemblyai => AssemblyAITranscriptionService(
-        apiKey: _assemblyAiKey,
-      ),
+          apiKey: _assemblyAiKey,
+        ),
     };
   }
 
   SummaryService? createSummaryService() {
+    return switch (_summaryEngine) {
+      SummaryEngine.local => null,
+      SummaryEngine.openai => _openAiKey.isEmpty
+          ? null
+          : OpenAISummaryService(
+              apiKey: _openAiKey,
+              baseUrl: _openAiBaseUrl,
+            ),
+      SummaryEngine.assemblyai => _assemblyAiKey.isEmpty
+          ? null
+          : AssemblyAISummaryService(
+              apiKey: _assemblyAiKey,
+            ),
+    };
+  }
+
+  SummaryService? createTranscriptionEngineSummaryService() {
     return switch (_engine) {
       TranscriptionEngine.openai => OpenAISummaryService(
-        apiKey: _openAiKey,
-        baseUrl: _openAiBaseUrl,
-      ),
+          apiKey: _openAiKey,
+          baseUrl: _openAiBaseUrl,
+        ),
       TranscriptionEngine.assemblyai => AssemblyAISummaryService(
-        apiKey: _assemblyAiKey,
-      ),
+          apiKey: _assemblyAiKey,
+        ),
       TranscriptionEngine.local => null,
     };
   }
@@ -119,7 +150,7 @@ class TranscriptionConfig extends ChangeNotifier {
       'medium' => WhisperModel.medium,
       'large-v1' => WhisperModel.largeV1,
       'large-v2' => WhisperModel.largeV2,
-      _ => WhisperModel.base,
+      _ => WhisperModel.tiny,
     };
   }
 }

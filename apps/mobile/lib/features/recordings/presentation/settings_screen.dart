@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/services/theme_service.dart';
 import '../../../core/services/transcription_config.dart';
 import '../../../core/services/transcription_service.dart';
+import 'transcription_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -52,7 +53,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showWhisperModelPicker(context, config),
             ),
+            const ListTile(
+              leading: Icon(Icons.memory_outlined),
+              title: Text('Rendimiento local'),
+              subtitle: Text(
+                'Tiny es el recomendado para evitar cierres por CPU/memoria. Cambiar modelo no borra los modelos ya descargados.',
+              ),
+            ),
           ],
+          _SectionHeader(title: 'Resumen'),
+          _SummaryEngineSelector(config: config),
           if (config.engine == TranscriptionEngine.openai) ...[
             ListTile(
               leading: const Icon(Icons.key),
@@ -73,7 +83,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('URL base (compatible)'),
-              subtitle: Text(config.openAiBaseUrl),
+              subtitle: Text(
+                '${config.openAiBaseUrl}\nPara transcripcion debe exponer /audio/transcriptions. OpenRouter normalmente sirve para resumen via /chat/completions.',
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showApiKeyDialog(
                 context,
@@ -123,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.audiotrack_outlined),
             title: const Text('Formato de audio'),
-            subtitle: const Text('AAC (.m4a)'),
+            subtitle: const Text('WAV mono 16 kHz'),
           ),
           _SectionHeader(title: 'Informacion'),
           ListTile(
@@ -151,9 +163,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _whisperModelLabel(String model) {
     return switch (model) {
-      'tiny' => 'Tiny (~75 MB, rapido, menos preciso)',
-      'base' => 'Base (~140 MB, equilibrio)',
-      'small' => 'Small (~460 MB, mas preciso)',
+      'tiny' => 'Tiny (~75 MB, recomendado, mas rapido)',
+      'base' => 'Base (~140 MB, mas lento y exige mas memoria)',
+      'small' => 'Small (~460 MB, alto consumo; puede cerrar la app)',
       _ => model,
     };
   }
@@ -195,7 +207,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showWhisperModelPicker(BuildContext context, TranscriptionConfig config) {
+  void _showWhisperModelPicker(
+      BuildContext context, TranscriptionConfig config) {
     final models = ['tiny', 'base', 'small'];
     showModalBottomSheet(
       context: context,
@@ -216,12 +229,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: Text(m.toUpperCase()),
                   subtitle: Text(_whisperModelLabel(m)),
                   trailing:
-                      config.whisperModel == m
-                          ? const Icon(Icons.check)
-                          : null,
+                      config.whisperModel == m ? const Icon(Icons.check) : null,
                   onTap: () {
-                    config.setWhisperModel(m);
                     Navigator.of(ctx).pop();
+                    _replaceWhisperModel(context, config, m);
                   },
                 ),
             ],
@@ -267,6 +278,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _replaceWhisperModel(
+    BuildContext context,
+    TranscriptionConfig config,
+    String model,
+  ) async {
+    if (model == config.whisperModel) return;
+    final messenger = ScaffoldMessenger.of(context);
+    var progress = 0.0;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Descargando modelo'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Modelo: ${model.toUpperCase()}'),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(
+                      value: progress == 0 ? null : progress),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Al finalizar se eliminara el modelo local anterior para liberar espacio.',
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    try {
+      await context.read<TranscriptionProvider>().replaceLocalModel(
+        model,
+        onProgress: (value) {
+          progress = value;
+        },
+      );
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Modelo ${model.toUpperCase()} listo')),
+      );
+    } catch (e) {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(content: Text('No se pudo cambiar el modelo: $e')),
+      );
+    }
+  }
+}
+
+class _SummaryEngineSelector extends StatelessWidget {
+  const _SummaryEngineSelector({required this.config});
+
+  final TranscriptionConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final engine in SummaryEngine.values)
+          RadioListTile<SummaryEngine>(
+            value: engine,
+            groupValue: config.summaryEngine,
+            onChanged: (value) {
+              if (value != null) config.setSummaryEngine(value);
+            },
+            title: Text(_summaryEngineLabel(engine)),
+            subtitle: Text(_summaryEngineDescription(engine)),
+            secondary: Icon(_summaryEngineIcon(engine)),
+          ),
+      ],
+    );
+  }
+
+  String _summaryEngineLabel(SummaryEngine engine) {
+    return switch (engine) {
+      SummaryEngine.local => 'Resumen local',
+      SummaryEngine.openai => 'OpenAI para resumen',
+      SummaryEngine.assemblyai => 'AssemblyAI para resumen',
+    };
+  }
+
+  String _summaryEngineDescription(SummaryEngine engine) {
+    return switch (engine) {
+      SummaryEngine.local => 'Gratis, rapido, calidad limitada',
+      SummaryEngine.openai =>
+        'Mejor redaccion y estructura; requiere API key OpenAI',
+      SummaryEngine.assemblyai => 'Resumen cloud; requiere API key AssemblyAI',
+    };
+  }
+
+  IconData _summaryEngineIcon(SummaryEngine engine) {
+    return switch (engine) {
+      SummaryEngine.local => Icons.phone_android,
+      SummaryEngine.openai => Icons.auto_awesome,
+      SummaryEngine.assemblyai => Icons.cloud_queue,
+    };
   }
 }
 
@@ -332,9 +449,9 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }

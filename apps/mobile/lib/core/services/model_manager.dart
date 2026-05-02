@@ -26,11 +26,12 @@ class ModelManager {
     try {
       final dir = await _modelDir();
       final file = File(model.getPath(dir));
-      if (!file.existsSync()) return false;
+      if (!await file.exists()) return false;
       final size = await file.length();
       final minSize = _expectedSizes[model] ?? 0;
       if (minSize > 0 && size < minSize ~/ 2) {
-        _log('isAvailable: ${model.modelName} existe pero tamaño $size < ${minSize ~/ 2}, probablemente corrupto');
+        _log(
+            'isAvailable: ${model.modelName} existe pero tamaño $size < ${minSize ~/ 2}, probablemente corrupto');
         return false;
       }
       _log('isAvailable: ${model.modelName} OK (size=$size)');
@@ -63,8 +64,8 @@ class ModelManager {
 
     final dir = await _modelDir();
     final dirPath = Directory(dir);
-    if (!dirPath.existsSync()) {
-      dirPath.createSync(recursive: true);
+    if (!await dirPath.exists()) {
+      await dirPath.create(recursive: true);
     }
 
     try {
@@ -78,7 +79,7 @@ class ModelManager {
       _log('ensureModel: error descargando ${model.modelName}: $e');
       final filePath = model.getPath(dir);
       final file = File(filePath);
-      if (file.existsSync()) {
+      if (await file.exists()) {
         await file.delete();
         _log('ensureModel: archivo corrupto eliminado');
       }
@@ -87,7 +88,8 @@ class ModelManager {
 
     final verified = await isAvailable(model);
     if (!verified) {
-      throw ModelManagerException('Modelo descargado pero verificacion fallida: ${model.modelName}');
+      throw ModelManagerException(
+          'Modelo descargado pero verificacion fallida: ${model.modelName}');
     }
 
     onProgress?.call(1.0);
@@ -96,7 +98,7 @@ class ModelManager {
   Future<void> deleteModel(WhisperModel model) async {
     final dir = await _modelDir();
     final file = File(model.getPath(dir));
-    if (file.existsSync()) {
+    if (await file.exists()) {
       await file.delete();
       _log('deleteModel: ${model.modelName} eliminado');
     }
@@ -105,7 +107,7 @@ class ModelManager {
   Future<ModelInfo?> getModelInfo(WhisperModel model) async {
     final dir = await _modelDir();
     final file = File(model.getPath(dir));
-    if (!file.existsSync()) return null;
+    if (!await file.exists()) return null;
     final stat = await file.stat();
     final size = await file.length();
     return ModelInfo(
@@ -136,7 +138,9 @@ class ModelInfo {
 
   String get sizeFormatted {
     if (sizeBytes < 1024) return '$sizeBytes B';
-    if (sizeBytes < 1024 * 1024) return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+    if (sizeBytes < 1024 * 1024) {
+      return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+    }
     return '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

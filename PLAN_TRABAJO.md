@@ -1,6 +1,6 @@
 # Plan de Trabajo — Sami Transcribe
 
-> Ultima actualizacion: 2026-05-01  
+> Ultima actualizacion: 2026-05-02  
 > Estado: **Fase 2 — Issues 0001-0003 resueltos, preparando Play Store**  
 > Enfoque actual: **beta personal con ruta a Play Store**
 
@@ -214,6 +214,16 @@ Cuando la beta personal esté estable, el siguiente camino será:
 - [x] APK debug compilada y probada.
 - [x] Issues 0001-0003 resueltos (bug transcripcion, logging, ModelManager).
 - [x] Namespace Play Store (`com.sami.transcribe`) y PRIVACY_POLICY.md listos.
+- [x] Build debug verificado nuevamente con JDK configurado y APK generada.
+- [x] Flujo local alineado a WAV y exportacion de transcripciones habilitada.
+- [x] Build APK debug reintentado; artefacto fuente generado aunque la copia final quedo bloqueada por archivo en uso.
+- [x] Logo gótico agregado a la UI principal.
+- [x] Grabacion local forzada a WAV mono 16 kHz; normalizacion WAV movida a background isolate.
+- [x] Importacion de audio habilitada para archivos externos compatibles.
+- [x] Recuperacion de estados colgados tras crash/reinicio y timeout visible de transcripcion.
+- [x] Compartir audio original habilitado desde detalle.
+- [x] Mitigacion extra de crash local: Whisper default nuevo en Tiny, threads limitados e icono externo Android actualizado.
+- [x] Cambio de modelo local con descarga/reemplazo, exportacion PDF/TXT con selector y borrado de transcripcion anterior.
 - [ ] Implementar importacion de audios externos (Sprint 2 pendiente).
 - [ ] Agregar tests de integracion (Issue 0004).
 - [ ] Configurar signing release y generar AAB para Play Store (Issue 0005).
@@ -229,6 +239,15 @@ Cuando la beta personal esté estable, el siguiente camino será:
 | 2026-04-30 | Sprint 2 implementado: Whisper local y APIs configurables | Base de transcripcion lista |
 | 2026-04-30 | Intento de build APK | Bloqueado por estructura Flutter/Android no inicializada |
 | 2026-05-01 | Build APK exitoso, namespace Play Store, ModelManager, fixes bugs | Issues 0001-0003 resueltos, 0005 parcial |
+| 2026-05-02 | Build debug repetido con `JAVA_HOME` apuntando a `C:\Users\informatica\.jdks\ms-21.0.9` | `build\\app\\outputs\\flutter-apk\\app-debug.apk` generada con exito |
+| 2026-05-02 | Flujo de audio ajustado a WAV y exportacion TXT de transcripcion habilitada | Se removio la dependencia ffmpeg rota y se mantuvo compatibilidad con APIs |
+| 2026-05-02 | Rebuild debug final | `build\\app\\outputs\\apk\\debug\\app-debug.apk` generado; copia final a `flutter-apk` bloqueada por archivo abierto |
+| 2026-05-02 | Logo gótico integrado en home/app bar | Nuevo widget reusable `gothic_logo.dart` y APK debug regenerada con exito |
+| 2026-05-02 | Fix completo de audio local/importado y anti-bloqueo UI | APK debug `build\\app\\outputs\\flutter-apk\\app-debug.apk` regenerada a las 14:07; grabacion 16 kHz, importacion activa y normalizacion en isolate |
+| 2026-05-02 | Fix de transcripcion colgada y recuperacion post-crash | Auto-refresco de grabaciones, limpieza de estados `transcribing` al reiniciar, timeout y APK debug regenerada a las 14:41 |
+| 2026-05-02 | Auditoria post-crash, modelos Whisper e icono externo | `tiny` como default nuevo, Whisper local limitado a 2 threads, icono Android apuntando a drawable gótico; APK fuente generado a las 14:59, copia final bloqueada por archivo en uso |
+| 2026-05-02 | APK debug final regenerada tras liberar archivo bloqueado | `build\\app\\outputs\\flutter-apk\\app-debug.apk` generado correctamente a las 15:02 |
+| 2026-05-02 | Mejoras de exportacion/resumen/modelos | PDF/TXT con selector de ubicacion, resumen local estructurado, motor de resumen independiente, borrado de transcripcion y build fuente a las 15:39; copia final a `flutter-apk` bloqueada por archivo abierto |
 
 ---
 

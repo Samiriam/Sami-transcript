@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/services/transcription_config.dart';
 import '../../../core/services/transcription_service.dart';
@@ -60,6 +61,165 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     });
   }
 
+  Future<void> _downloadTranscription() async {
+    await _showExportOptions(share: false);
+  }
+
+  Future<void> _shareTranscription() async {
+    await _showExportOptions(share: true);
+  }
+
+  Future<void> _confirmDeleteTranscription() async {
+    final provider = context.read<TranscriptionProvider>();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Borrar transcripcion'),
+        content: const Text(
+          'Se borrara la transcripcion y sus segmentos. El audio original se conserva.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    try {
+      await provider.deleteTranscription(
+        widget.recording.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _fullText = null;
+        _segments = [];
+        _summary = null;
+        _isEditing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transcripcion borrada')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo borrar la transcripcion: $e')),
+      );
+    }
+  }
+
+  Future<void> _showExportOptions({required bool share}) async {
+    var format = ExportFormat.pdf;
+    var includeSummary = _summary != null && _summary!.trim().isNotEmpty;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      share ? 'Compartir documento' : 'Guardar documento',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<ExportFormat>(
+                      segments: const [
+                        ButtonSegment(
+                            value: ExportFormat.pdf, label: Text('PDF')),
+                        ButtonSegment(
+                            value: ExportFormat.txt, label: Text('TXT')),
+                      ],
+                      selected: {format},
+                      onSelectionChanged: (values) {
+                        setSheetState(() => format = values.first);
+                      },
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: includeSummary,
+                      onChanged: _summary == null
+                          ? null
+                          : (value) => setSheetState(
+                              () => includeSummary = value ?? false),
+                      title: const Text('Incluir resumen'),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        Navigator.of(sheetContext).pop();
+                        await _exportWithOptions(
+                          format: format,
+                          includeSummary: includeSummary,
+                          share: share,
+                        );
+                      },
+                      icon: Icon(share ? Icons.share_outlined : Icons.save_alt),
+                      label: Text(
+                          share ? 'Compartir' : 'Elegir ubicacion y guardar'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _exportWithOptions({
+    required ExportFormat format,
+    required bool includeSummary,
+    required bool share,
+  }) async {
+    final provider = context.read<TranscriptionProvider>();
+    final summary = includeSummary ? _summary : null;
+    try {
+      if (share) {
+        final file = await provider.exportTranscription(
+          widget.recording.id,
+          recordingTitle: widget.recording.title,
+          summary: summary,
+          format: format,
+        );
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Transcripcion de ${widget.recording.title}',
+        );
+        return;
+      }
+
+      final path = await provider.saveExportAs(
+        widget.recording.id,
+        recordingTitle: widget.recording.title,
+        summary: summary,
+        format: format,
+      );
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Documento guardado en $path')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo exportar la transcripcion: $e')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _editController.dispose();
@@ -92,9 +252,19 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               },
             ),
           IconButton(
+            icon: const Icon(Icons.download_outlined),
+            tooltip: 'Descargar transcripcion',
+            onPressed: _fullText == null ? null : _downloadTranscription,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Borrar transcripcion',
+            onPressed: _fullText == null ? null : _confirmDeleteTranscription,
+          ),
+          IconButton(
             icon: const Icon(Icons.share_outlined),
-            tooltip: 'Compartir',
-            onPressed: () {},
+            tooltip: 'Compartir transcripcion',
+            onPressed: _fullText == null ? null : _shareTranscription,
           ),
         ],
       ),
@@ -132,8 +302,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
           Text(
             'Segmentos',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+                  fontWeight: FontWeight.w600,
+                ),
           ),
           const SizedBox(height: 8),
           ..._segments.map((seg) => _SegmentCard(segment: seg)),
@@ -161,6 +331,21 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyLarge,
             ),
+            const SizedBox(height: 12),
+            Text(
+              'Tiempo transcurrido: ${provider.transcriptionElapsedLabel}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Si la app se cierra o se cae, esta transcripcion no continua en segundo plano.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
             if (provider.isModelDownloading) ...[
               const SizedBox(height: 16),
               LinearProgressIndicator(value: provider.downloadProgress),
@@ -168,8 +353,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               Text(
                 'Descargando modelo Whisper...',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
               ),
             ],
           ],
@@ -194,16 +379,16 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
             Text(
               'Error en la transcripcion',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: colorScheme.error,
-              ),
+                    color: colorScheme.error,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               provider.lastError ?? 'Error desconocido',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.outline,
-              ),
+                    color: colorScheme.outline,
+                  ),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -229,15 +414,15 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
             Text(
               'Sin transcripcion',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: colorScheme.outline,
-              ),
+                    color: colorScheme.outline,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               'Toca el boton para transcribir este audio',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.outline,
-              ),
+                    color: colorScheme.outline,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -272,8 +457,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         Text(
           'Motor: $label',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-          ),
+                color: Theme.of(context).colorScheme.primary,
+              ),
         ),
       ],
     );
@@ -312,8 +497,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
             Text(
               'Resumen',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             const Spacer(),
             if (_summary == null && !_isSummarizing)
@@ -376,7 +561,8 @@ class _SegmentCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(6),
@@ -384,17 +570,17 @@ class _SegmentCard extends StatelessWidget {
                   child: Text(
                     speaker,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '${_formatTime(start)} - ${_formatTime(end)}',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                 ),
               ],
             ),

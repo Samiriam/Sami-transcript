@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../domain/recording.dart';
 import '../data/recording_repository.dart';
@@ -11,6 +16,7 @@ class RecordingProvider extends ChangeNotifier {
 
   final RecordingRepository _repository;
   final AudioRecorderService _recorderService;
+  final _uuid = const Uuid();
 
   List<Recording> _recordings = [];
   List<Recording> get recordings => _recordings;
@@ -33,12 +39,34 @@ class RecordingProvider extends ChangeNotifier {
   Timer? _timer;
 
   void init() {
+    _subscription?.cancel();
+    _subscription = _repository.watchAll().listen((recordings) {
+      _recordings = recordings;
+      notifyListeners();
+    });
     _loadRecordings();
+    _recoverInterruptedTranscriptions();
   }
 
   Future<void> _loadRecordings() async {
     _recordings = await _repository.list();
     notifyListeners();
+  }
+
+  Future<void> _recoverInterruptedTranscriptions() async {
+    final recordings = await _repository.list();
+    final stale = recordings
+        .where((recording) => recording.status == RecordingStatus.transcribing)
+        .toList();
+
+    for (final recording in stale) {
+      await _repository.update(
+        recording.copyWith(
+          status: RecordingStatus.failed,
+          updatedAt: DateTime.now(),
+        ),
+      );
+    }
   }
 
   Future<void> startRecording() async {
@@ -108,6 +136,57 @@ class RecordingProvider extends ChangeNotifier {
       updatedAt: DateTime.now(),
     );
     await _repository.update(updated);
+    await _loadRecordings();
+  }
+
+  Future<void> importAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['wav', 'mp3', 'm4a', 'aac', 'mp4', 'mpeg', 'webm'],
+    );
+
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final selected = result.files.single;
+    final sourcePath = selected.path;
+    if (sourcePath == null || sourcePath.isEmpty) {
+      throw Exception('No se pudo leer el archivo seleccionado');
+    }
+
+    final sourceFile = File(sourcePath);
+    if (!await sourceFile.exists()) {
+      throw Exception('El archivo seleccionado ya no existe');
+    }
+
+    final appDirectory = await getApplicationDocumentsDirectory();
+    final recordingsDir = Directory(p.join(appDirectory.path, 'recordings'));
+    if (!await recordingsDir.exists()) {
+      await recordingsDir.create(recursive: true);
+    }
+
+    final extension = p.extension(sourcePath).toLowerCase();
+    final importedId = _uuid.v4();
+    final importedPath = p.join(recordingsDir.path, '$importedId$extension');
+    await sourceFile.copy(importedPath);
+
+    final title = selected.name.isNotEmpty
+        ? p.basenameWithoutExtension(selected.name)
+        : 'Importado ${_recordings.length + 1}';
+
+    final recording = Recording(
+      id: importedId,
+      title: title,
+      audioPath: importedPath,
+      durationSeconds: 0,
+      source: RecordingSource.import,
+      status: RecordingStatus.saved,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+
+    await _repository.save(recording);
     await _loadRecordings();
   }
 

@@ -1,18 +1,22 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import 'model_manager.dart';
 import 'transcription_service.dart';
+import 'wav_audio_preparer.dart';
 
 class LocalWhisperService implements TranscriptionService {
   LocalWhisperService({
-    WhisperModel model = WhisperModel.base,
+    WhisperModel model = WhisperModel.tiny,
     ModelManager? modelManager,
   })  : _model = model,
         _modelManager = modelManager ?? ModelManager();
 
   final WhisperModel _model;
   final ModelManager _modelManager;
+  final WavAudioPreparer _audioPreparer = WavAudioPreparer();
 
   @override
   TranscriptionEngine get engine => TranscriptionEngine.local;
@@ -29,15 +33,23 @@ class LocalWhisperService implements TranscriptionService {
   @override
   Future<TranscriptionResult> transcribe(String audioPath) async {
     _log('transcribe_start audio=$audioPath model=${_model.modelName}');
+    PreparedAudioFile? preparedAudio;
 
     try {
+      preparedAudio = await _audioPreparer.prepareForWhisper(audioPath);
+      if (preparedAudio.isTemporary) {
+        _log('audio_normalized_for_whisper path=${preparedAudio.path}');
+      }
+
       final whisper = Whisper(model: _model);
 
       final result = await whisper.transcribe(
         transcribeRequest: TranscribeRequest(
-          audio: audioPath,
+          audio: preparedAudio.path,
           language: 'es',
           isTranslate: false,
+          threads: 2,
+          nProcessors: 1,
         ),
       );
 
@@ -62,9 +74,19 @@ class LocalWhisperService implements TranscriptionService {
         language: 'es',
         segments: segments,
       );
+    } on WavAudioPreparationException catch (e, st) {
+      _log('audio_prepare_error: $e\n$st');
+      throw TranscriptionException('Error en audio local: $e');
     } catch (e, st) {
       _log('transcribe_error: $e\n$st');
       throw TranscriptionException('Error en transcripcion local: $e');
+    } finally {
+      if (preparedAudio != null && preparedAudio.isTemporary) {
+        final tempFile = File(preparedAudio.path);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      }
     }
   }
 

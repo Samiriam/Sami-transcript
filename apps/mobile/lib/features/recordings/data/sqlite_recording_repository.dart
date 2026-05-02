@@ -66,7 +66,9 @@ class SqliteRecordingRepository implements RecordingRepository {
       title: row['title'] as String,
       audioPath: row['audio_path'] as String,
       durationSeconds: row['duration_seconds'] as int,
-      source: row['source'] == 'import' ? RecordingSource.import : RecordingSource.app,
+      source: row['source'] == 'import'
+          ? RecordingSource.import
+          : RecordingSource.app,
       status: _parseStatus(row['status'] as String),
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: row['updated_at'] != null

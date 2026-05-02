@@ -36,11 +36,15 @@ class AudioRecorderService {
       await recordingsDir.create(recursive: true);
     }
 
-    final fileName = '${_uuid.v4()}.m4a';
+    final fileName = '${_uuid.v4()}.wav';
     _currentRecordingPath = p.join(recordingsDirPath, fileName);
 
     await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.aacLc),
+      const RecordConfig(
+        encoder: AudioEncoder.wav,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
       path: _currentRecordingPath!,
     );
 
@@ -55,10 +59,9 @@ class AudioRecorderService {
     final path = await _recorder.stop();
     _isRecording = false;
 
-    final durationSeconds =
-        _recordingStartTime != null
-            ? DateTime.now().difference(_recordingStartTime!).inSeconds
-            : 0;
+    final durationSeconds = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!).inSeconds
+        : 0;
 
     _recordingStartTime = null;
 

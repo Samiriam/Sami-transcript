@@ -4,7 +4,8 @@
     <application
         android:label="Sami Transcribe"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@drawable/ic_launcher_gothic"
+        android:roundIcon="@drawable/ic_launcher_gothic">
         <activity
             android:name=".MainActivity"
             android:exported="true"

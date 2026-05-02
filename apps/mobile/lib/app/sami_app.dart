@@ -37,8 +37,9 @@ class SamiApp extends StatelessWidget {
             ctx.read<RecordingRepository>(),
             ctx.read<AudioRecorderService>(),
           )..init(),
-          update: (_, repo, prev) =>
-              prev ?? RecordingProvider(repo, context.read<AudioRecorderService>())..init(),
+          update: (_, repo, prev) => prev ??
+              RecordingProvider(repo, context.read<AudioRecorderService>())
+            ..init(),
         ),
         ChangeNotifierProxyProvider<RecordingRepository, TranscriptionProvider>(
           create: (ctx) => TranscriptionProvider(
@@ -46,11 +47,13 @@ class SamiApp extends StatelessWidget {
             _db,
             _transcriptionConfig,
           ),
-          update: (_, repo, prev) => prev ?? TranscriptionProvider(
-            repo,
-            _db,
-            _transcriptionConfig,
-          ),
+          update: (_, repo, prev) =>
+              prev ??
+              TranscriptionProvider(
+                repo,
+                _db,
+                _transcriptionConfig,
+              ),
         ),
       ],
       child: Consumer<ThemeService>(

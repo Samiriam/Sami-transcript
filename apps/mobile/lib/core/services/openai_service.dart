@@ -32,13 +32,12 @@ class OpenAITranscriptionService implements TranscriptionService {
     }
 
     final uri = Uri.parse('$baseUrl/audio/transcriptions');
-    final request =
-        http.MultipartRequest('POST', uri)
-          ..headers['Authorization'] = 'Bearer $apiKey'
-          ..fields['model'] = model
-          ..fields['language'] = 'es'
-          ..fields['response_format'] = 'verbose_json'
-          ..files.add(await http.MultipartFile.fromPath('file', audioPath));
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer $apiKey'
+      ..fields['model'] = model
+      ..fields['language'] = 'es'
+      ..fields['response_format'] = 'verbose_json'
+      ..files.add(await http.MultipartFile.fromPath('file', audioPath));
 
     final response = await request.send();
     final body = await response.stream.bytesToString();
@@ -97,12 +96,16 @@ class OpenAISummaryService implements SummaryService {
         'messages': [
           {
             'role': 'system',
-            'content':
-                'Eres un asistente que genera resumenes concisos de transcripciones de audio. '
-                    'Responde en espanol. Genera un resumen estructurado con: '
-                    '1) Temas principales, 2) Puntos clave, 3) Acciones pendientes si las hay.',
+            'content': 'Eres un editor experto de transcripciones en espanol. '
+                'La transcripcion puede contener errores de reconocimiento. '
+                'No inventes datos, pero corrige redaccion evidente, agrupa ideas y genera un resumen profesional. '
+                'Usa esta estructura: 1) Resumen ejecutivo, 2) Temas tratados, 3) Acuerdos o decisiones, '
+                '4) Acciones pendientes, 5) Riesgos o dudas. Si una seccion no aplica, escribe "No identificado".',
           },
-          {'role': 'user', 'content': 'Resume esta transcripcion:\n\n$fullText'},
+          {
+            'role': 'user',
+            'content': 'Transcripcion a resumir y estructurar:\n\n$fullText'
+          },
         ],
         'max_tokens': 1000,
         'temperature': 0.3,
@@ -114,8 +117,7 @@ class OpenAISummaryService implements SummaryService {
     }
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final content =
-        json['choices']?[0]?['message']?['content'] as String? ??
+    final content = json['choices']?[0]?['message']?['content'] as String? ??
         'No se pudo generar el resumen.';
 
     return SummaryResult(summary: content, engine: TranscriptionEngine.openai);

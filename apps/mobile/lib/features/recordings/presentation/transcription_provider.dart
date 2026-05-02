@@ -1,7 +1,16 @@
+import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import '../../../core/database/app_database.dart' as db;
+import '../../../core/storage/local_paths.dart';
 import '../../../core/services/local_whisper_service.dart';
 import '../../../core/services/model_manager.dart';
 import '../../../core/services/transcription_config.dart';
@@ -33,11 +42,25 @@ class TranscriptionProvider extends ChangeNotifier {
   double _downloadProgress = 0;
   double get downloadProgress => _downloadProgress;
 
+  Timer? _transcriptionTicker;
+  int _transcriptionElapsedSeconds = 0;
+  int get transcriptionElapsedSeconds => _transcriptionElapsedSeconds;
+  String get transcriptionElapsedLabel {
+    final minutes =
+        (_transcriptionElapsedSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds =
+        (_transcriptionElapsedSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   Future<void> transcribeRecording(String recordingId) async {
     _isTranscribing = true;
     _lastError = null;
     _transcriptionStatus = 'Preparando transcripcion...';
-    _log('transcribe_start recording=$recordingId engine=${_config.engine.name}');
+    _transcriptionElapsedSeconds = 0;
+    _startTranscriptionTicker();
+    _log(
+        'transcribe_start recording=$recordingId engine=${_config.engine.name}');
     notifyListeners();
 
     try {
@@ -52,7 +75,8 @@ class TranscriptionProvider extends ChangeNotifier {
 
       final service = _config.createService();
 
-      if (_config.engine == TranscriptionEngine.local && service is LocalWhisperService) {
+      if (_config.engine == TranscriptionEngine.local &&
+          service is LocalWhisperService) {
         _isModelDownloading = true;
         _downloadProgress = 0;
         _transcriptionStatus = 'Verificando modelo local...';
@@ -80,31 +104,44 @@ class TranscriptionProvider extends ChangeNotifier {
         _downloadProgress = 0;
       }
 
-      _transcriptionStatus = 'Transcribiendo con ${_config.engine.name}...';
+      _transcriptionStatus = _config.engine == TranscriptionEngine.local
+          ? 'Preparando audio local y transcribiendo...'
+          : 'Transcribiendo con ${_config.engine.name}...';
       _log('calling_transcribe audio=${recording.audioPath}');
       notifyListeners();
 
-      final result = await service.transcribe(recording.audioPath);
+      final result = await service
+          .transcribe(recording.audioPath)
+          .timeout(_timeoutFor(recording, _config.engine), onTimeout: () {
+        throw TranscriptionTimeoutException(
+          'La transcripcion excedio el tiempo esperado y fue interrumpida. Puedes reintentar o usar OpenAI/AssemblyAI para audios importados.',
+        );
+      });
 
-      _log('transcribe_ok text_length=${result.text.length} segments=${result.segments.length}');
+      _log(
+          'transcribe_ok text_length=${result.text.length} segments=${result.segments.length}');
 
       final database = await _appDb.database;
       final transcriptionId = DateTime.now().millisecondsSinceEpoch.toString();
 
-      await database.insert('transcriptions', {
+      _transcriptionStatus = 'Guardando transcripcion...';
+      notifyListeners();
+
+      final createdAt = DateTime.now().toIso8601String();
+      final batch = database.batch();
+      batch.insert('transcriptions', {
         'id': transcriptionId,
         'recording_id': recordingId,
         'full_text': result.text,
         'language': result.language,
         'model_used': result.engine.name,
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': createdAt,
       });
 
-      for (final segment in result.segments) {
-        final segmentId =
-            '${transcriptionId}_${result.segments.indexOf(segment)}';
-        await database.insert('segments', {
-          'id': segmentId,
+      for (var i = 0; i < result.segments.length; i++) {
+        final segment = result.segments[i];
+        batch.insert('segments', {
+          'id': '${transcriptionId}_$i',
           'transcription_id': transcriptionId,
           'speaker_label': segment.speaker ?? 'Hablante 1',
           'speaker_name': null,
@@ -113,6 +150,8 @@ class TranscriptionProvider extends ChangeNotifier {
           'text': segment.text,
         });
       }
+
+      await batch.commit(noResult: true);
 
       await _repository.update(
         recording.copyWith(
@@ -137,11 +176,35 @@ class TranscriptionProvider extends ChangeNotifier {
         );
       } catch (_) {}
     } finally {
+      _transcriptionTicker?.cancel();
+      _transcriptionTicker = null;
       _isTranscribing = false;
       _isModelDownloading = false;
       _downloadProgress = 0;
+      _transcriptionElapsedSeconds = 0;
       notifyListeners();
     }
+  }
+
+  void _startTranscriptionTicker() {
+    _transcriptionTicker?.cancel();
+    _transcriptionTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      _transcriptionElapsedSeconds++;
+      notifyListeners();
+    });
+  }
+
+  Duration _timeoutFor(Recording recording, TranscriptionEngine engine) {
+    final audioSeconds =
+        recording.durationSeconds <= 0 ? 180 : recording.durationSeconds;
+    return switch (engine) {
+      TranscriptionEngine.local => Duration(
+          seconds: (audioSeconds * 2 + 120).clamp(420, 1200),
+        ),
+      TranscriptionEngine.openai || TranscriptionEngine.assemblyai => Duration(
+          seconds: (audioSeconds * 2 + 180).clamp(420, 1800),
+        ),
+    };
   }
 
   Future<bool> isModelAvailable() async {
@@ -156,6 +219,21 @@ class TranscriptionProvider extends ChangeNotifier {
     if (_config.engine != TranscriptionEngine.local) return null;
     final model = _parseWhisperModel(_config.whisperModel);
     return _modelManager.getModelInfo(model);
+  }
+
+  Future<void> replaceLocalModel(
+    String nextModelName, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final previousModelName = _config.whisperModel;
+    if (previousModelName == nextModelName) return;
+
+    final previousModel = _parseWhisperModel(previousModelName);
+    final nextModel = _parseWhisperModel(nextModelName);
+
+    await _modelManager.ensureModel(nextModel, onProgress: onProgress);
+    await _config.setWhisperModel(nextModelName);
+    await _modelManager.deleteModel(previousModel);
   }
 
   Future<String> getStorageInfo() async {
@@ -173,7 +251,7 @@ class TranscriptionProvider extends ChangeNotifier {
       'medium' => WhisperModel.medium,
       'large-v1' => WhisperModel.largeV1,
       'large-v2' => WhisperModel.largeV2,
-      _ => WhisperModel.base,
+      _ => WhisperModel.tiny,
     };
   }
 
@@ -210,6 +288,40 @@ class TranscriptionProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> deleteTranscription(String recordingId) async {
+    final database = await _appDb.database;
+    final transRows = await database.query(
+      'transcriptions',
+      columns: ['id'],
+      where: 'recording_id = ?',
+      whereArgs: [recordingId],
+    );
+
+    final batch = database.batch();
+    for (final row in transRows) {
+      final transcriptionId = row['id'] as String;
+      batch.delete(
+        'segments',
+        where: 'transcription_id = ?',
+        whereArgs: [transcriptionId],
+      );
+    }
+    batch.delete(
+      'transcriptions',
+      where: 'recording_id = ?',
+      whereArgs: [recordingId],
+    );
+    await batch.commit(noResult: true);
+
+    final recording = await _repository.getById(recordingId);
+    await _repository.update(
+      recording.copyWith(
+        status: RecordingStatus.saved,
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
   Future<String?> generateSummary(String recordingId) async {
     final text = await getTranscriptionText(recordingId);
     if (text == null || text.isEmpty) return null;
@@ -224,17 +336,265 @@ class TranscriptionProvider extends ChangeNotifier {
   }
 
   String _localSummary(String text) {
-    final sentences =
-        text.split(RegExp(r'[.!?]+')).where((s) => s.trim().isNotEmpty).toList();
-    if (sentences.length <= 3) return text;
-    final buffer = StringBuffer('Resumen automatico:\n\n');
-    for (var i = 0; i < sentences.length && i < 8; i++) {
-      buffer.writeln('- ${sentences[i].trim()}');
+    final cleanedText = _cleanupTranscriptText(text);
+    final sentences = cleanedText
+        .split(RegExp(r'[.!?]+'))
+        .map((s) => s.trim())
+        .where((s) => s.length > 12)
+        .toList();
+
+    if (sentences.isEmpty) return cleanedText;
+
+    final selected = <String>[];
+    selected.addAll(sentences.take(2));
+
+    final important = sentences.where((sentence) {
+      final lower = sentence.toLowerCase();
+      return lower.contains('acuerdo') ||
+          lower.contains('decid') ||
+          lower.contains('pendiente') ||
+          lower.contains('tarea') ||
+          lower.contains('próxim') ||
+          lower.contains('proxim') ||
+          lower.contains('problema') ||
+          lower.contains('riesgo');
+    });
+    for (final sentence in important) {
+      if (selected.length >= 8) break;
+      if (!selected.contains(sentence)) selected.add(sentence);
     }
+
+    final buffer = StringBuffer();
+    buffer.writeln('Resumen ejecutivo');
+    buffer.writeln(_ensureSentence(selected.take(3).join(' ')));
+    buffer.writeln();
+    buffer.writeln('Temas principales');
+    for (final sentence in selected.take(5)) {
+      buffer.writeln('- ${_ensureSentence(sentence)}');
+    }
+    buffer.writeln();
+    buffer.writeln('Acciones o pendientes detectados');
+    final actions = selected.where((sentence) {
+      final lower = sentence.toLowerCase();
+      return lower.contains('pendiente') ||
+          lower.contains('tarea') ||
+          lower.contains('hacer') ||
+          lower.contains('próxim') ||
+          lower.contains('proxim');
+    }).toList();
+    if (actions.isEmpty) {
+      buffer.writeln('- No identificado en el resumen local.');
+    } else {
+      for (final action in actions.take(5)) {
+        buffer.writeln('- ${_ensureSentence(action)}');
+      }
+    }
+    buffer.writeln();
+    buffer.writeln('Nota');
+    buffer.writeln(
+      'Este resumen local es extractivo y no corrige todos los errores de transcripcion. Para mejor calidad usa OpenAI o AssemblyAI como motor de resumen.',
+    );
     return buffer.toString();
+  }
+
+  String _cleanupTranscriptText(String text) {
+    final collapsed = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (collapsed.isEmpty) return collapsed;
+    return collapsed[0].toUpperCase() + collapsed.substring(1);
+  }
+
+  String _ensureSentence(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return trimmed;
+    final capitalized = trimmed[0].toUpperCase() + trimmed.substring(1);
+    return RegExp(r'[.!?]$').hasMatch(capitalized)
+        ? capitalized
+        : '$capitalized.';
+  }
+
+  Future<File> exportTranscription(
+    String recordingId, {
+    String? recordingTitle,
+    String? summary,
+    ExportFormat format = ExportFormat.txt,
+  }) async {
+    final exportDir = Directory(await LocalPaths.exportsDir);
+    if (!await exportDir.exists()) {
+      await exportDir.create(recursive: true);
+    }
+
+    final safeTitle = _safeFileName(recordingTitle ?? 'transcripcion');
+    final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final fileName = '${safeTitle}_$timestamp.${format.extension}';
+    final file = File(p.join(exportDir.path, fileName));
+    final bytes = await buildExportBytes(
+      recordingId,
+      recordingTitle: recordingTitle,
+      summary: summary,
+      format: format,
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  Future<String?> saveExportAs(
+    String recordingId, {
+    String? recordingTitle,
+    String? summary,
+    required ExportFormat format,
+  }) async {
+    final safeTitle = _safeFileName(recordingTitle ?? 'transcripcion');
+    final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final fileName = '${safeTitle}_$timestamp.${format.extension}';
+    final bytes = await buildExportBytes(
+      recordingId,
+      recordingTitle: recordingTitle,
+      summary: summary,
+      format: format,
+    );
+
+    return FilePicker.platform.saveFile(
+      dialogTitle: 'Guardar ${format.label}',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: [format.extension],
+      bytes: bytes,
+    );
+  }
+
+  Future<Uint8List> buildExportBytes(
+    String recordingId, {
+    String? recordingTitle,
+    String? summary,
+    required ExportFormat format,
+  }) async {
+    final text = await _buildExportText(
+      recordingId,
+      recordingTitle: recordingTitle,
+      summary: summary,
+    );
+    if (format == ExportFormat.txt) {
+      return Uint8List.fromList(utf8.encode(text));
+    }
+    return _buildPdfBytes(text, recordingTitle ?? 'Transcripcion');
+  }
+
+  Future<String> _buildExportText(
+    String recordingId, {
+    String? recordingTitle,
+    String? summary,
+  }) async {
+    final fullText = await getTranscriptionText(recordingId);
+    if (fullText == null || fullText.trim().isEmpty) {
+      throw Exception('No hay transcripcion disponible para exportar');
+    }
+
+    final segments = await getSegments(recordingId);
+    final buffer = StringBuffer();
+    buffer.writeln('Sami Transcribe');
+    buffer.writeln('Registro: $recordingId');
+    if (recordingTitle != null && recordingTitle.isNotEmpty) {
+      buffer.writeln('Titulo: $recordingTitle');
+    }
+    buffer.writeln('Motor: ${_config.engine.name}');
+    buffer.writeln('Exportado: ${DateTime.now().toIso8601String()}');
+    buffer.writeln();
+
+    if (summary != null && summary.trim().isNotEmpty) {
+      buffer.writeln('Resumen');
+      buffer.writeln(summary.trim());
+      buffer.writeln();
+    }
+
+    if (segments.isNotEmpty) {
+      buffer.writeln('Segmentos:');
+      for (final segment in segments) {
+        final speaker = segment['speaker_label'] as String? ?? 'Hablante 1';
+        final start = (segment['start_time'] as num?)?.toDouble() ?? 0.0;
+        final end = (segment['end_time'] as num?)?.toDouble() ?? 0.0;
+        final text = segment['text'] as String? ?? '';
+        buffer.writeln(
+            '[${_formatSeconds(start)} - ${_formatSeconds(end)}] $speaker: $text');
+      }
+      buffer.writeln();
+    }
+
+    buffer.writeln('Transcripcion completa:');
+    buffer.writeln(fullText);
+    return buffer.toString();
+  }
+
+  Future<Uint8List> _buildPdfBytes(String text, String title) async {
+    final doc = pw.Document();
+    final lines = text.split('\n');
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (context) => [
+          pw.Text(
+            title,
+            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 16),
+          ...lines.map((line) {
+            final isHeader = line == 'Resumen' ||
+                line == 'Segmentos:' ||
+                line == 'Transcripcion completa:' ||
+                line == 'Sami Transcribe';
+            return pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              child: pw.Text(
+                line,
+                style: pw.TextStyle(
+                  fontSize: isHeader ? 13 : 10,
+                  fontWeight:
+                      isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+    return doc.save();
+  }
+
+  String _safeFileName(String input) {
+    final normalized =
+        input.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9\-\s_]'), '');
+    return normalized.replaceAll(RegExp(r'\s+'), '_').isEmpty
+        ? 'transcripcion'
+        : normalized.replaceAll(RegExp(r'\s+'), '_');
+  }
+
+  String _formatSeconds(double seconds) {
+    final total = seconds.round();
+    final minutes = (total ~/ 60).toString().padLeft(2, '0');
+    final secs = (total % 60).toString().padLeft(2, '0');
+    return '$minutes:$secs';
   }
 
   void _log(String message) {
     debugPrint('[TranscriptionProvider] $message');
   }
+}
+
+class TranscriptionTimeoutException implements Exception {
+  TranscriptionTimeoutException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+enum ExportFormat {
+  txt('TXT', 'txt'),
+  pdf('PDF', 'pdf');
+
+  const ExportFormat(this.label, this.extension);
+
+  final String label;
+  final String extension;
 }

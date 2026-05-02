@@ -6,6 +6,7 @@ import 'recording_provider.dart';
 import 'recording_detail_screen.dart';
 import 'widgets/recording_card.dart';
 import '../../../core/services/theme_service.dart';
+import '../../../core/widgets/gothic_logo.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -15,7 +16,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sami Transcribe'),
+        title: const GothicLogo(size: 28, showLabel: false),
         actions: [
           IconButton(
             icon: const Icon(Icons.brightness_6),
@@ -43,6 +44,20 @@ class HomeScreen extends StatelessWidget {
 class _HomeBody extends StatelessWidget {
   const _HomeBody();
 
+  Future<void> _importAudio(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context.read<RecordingProvider>().importAudio();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Audio importado correctamente')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('No se pudo importar el audio: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<RecordingProvider>();
@@ -56,40 +71,31 @@ class _HomeBody extends StatelessWidget {
         children: [
           if (isRecording) const _RecordingIndicator(),
           if (!isRecording) ...[
-            Text(
-              'Sami Transcribe',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            const GothicLogo(size: 74),
             const SizedBox(height: 4),
             Text(
               'Graba, transcribe y organiza tus audios.',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
           ],
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed:
-                isRecording
-                    ? provider.stopRecording
-                    : provider.startRecording,
+                isRecording ? provider.stopRecording : provider.startRecording,
             icon: Icon(isRecording ? Icons.stop : Icons.mic),
             label: Text(
               isRecording ? 'Detener grabacion' : 'Grabar audio',
             ),
             style: FilledButton.styleFrom(
               backgroundColor:
-                  isRecording
-                      ? Theme.of(context).colorScheme.error
-                      : null,
+                  isRecording ? Theme.of(context).colorScheme.error : null,
             ),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: isRecording ? null : () => _importAudio(context),
             icon: const Icon(Icons.folder_open),
             label: const Text('Importar audio'),
           ),
@@ -99,15 +105,15 @@ class _HomeBody extends StatelessWidget {
               Text(
                 'Grabaciones recientes',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
               const Spacer(),
               Text(
                 '${recordings.length}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
               ),
             ],
           ),
@@ -143,9 +149,9 @@ class _RecordingIndicator extends StatelessWidget {
               Text(
                 'Grabando...',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                ),
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
             ],
           ),
@@ -161,8 +167,8 @@ class _RecordingIndicator extends StatelessWidget {
           Text(
             'Toca "Detener" para finalizar',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
         ],
       ),
@@ -237,15 +243,15 @@ class _RecordingList extends StatelessWidget {
             Text(
               'Sin grabaciones',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               'Toca "Grabar audio" para comenzar',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
             ),
           ],
         ),
@@ -277,31 +283,30 @@ class _RecordingList extends StatelessWidget {
   void _confirmDelete(BuildContext context, Recording recording) {
     showDialog(
       context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: const Text('Eliminar grabacion'),
-            content: Text(
-              'Se eliminara "${recording.title}". Esta accion no se puede deshacer.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  context.read<RecordingProvider>().deleteRecording(
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar grabacion'),
+        content: Text(
+          'Se eliminara "${recording.title}". Esta accion no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              context.read<RecordingProvider>().deleteRecording(
                     recording.id,
                   );
-                  Navigator.of(ctx).pop();
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                ),
-                child: const Text('Eliminar'),
-              ),
-            ],
+              Navigator.of(ctx).pop();
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Eliminar'),
           ),
+        ],
+      ),
     );
   }
 }

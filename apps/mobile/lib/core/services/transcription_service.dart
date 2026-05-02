@@ -1,5 +1,7 @@
 enum TranscriptionEngine { local, openai, assemblyai }
 
+enum SummaryEngine { local, openai, assemblyai }
+
 class TranscriptionResult {
   const TranscriptionResult({
     required this.text,

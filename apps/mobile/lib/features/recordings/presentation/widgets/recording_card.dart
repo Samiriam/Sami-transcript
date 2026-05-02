@@ -37,8 +37,8 @@ class RecordingCard extends StatelessWidget {
                     Text(
                       recording.title,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                            fontWeight: FontWeight.w600,
+                          ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -53,10 +53,10 @@ class RecordingCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Text(
                           recording.formattedDuration,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
                         ),
                         const SizedBox(width: 12),
                         Icon(
@@ -67,10 +67,10 @@ class RecordingCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Text(
                           dateFormat.format(recording.createdAt),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
                         ),
                       ],
                     ),
@@ -108,29 +108,34 @@ class _StatusIcon extends StatelessWidget {
 
     return switch (status) {
       RecordingStatus.recording => CircleAvatar(
-        backgroundColor: colorScheme.errorContainer,
-        child: Icon(Icons.fiber_manual_record, color: colorScheme.error, size: 20),
-      ),
+          backgroundColor: colorScheme.errorContainer,
+          child: Icon(Icons.fiber_manual_record,
+              color: colorScheme.error, size: 20),
+        ),
       RecordingStatus.saved => CircleAvatar(
-        backgroundColor: colorScheme.primaryContainer,
-        child: Icon(Icons.check_circle_outline, color: colorScheme.primary, size: 20),
-      ),
+          backgroundColor: colorScheme.primaryContainer,
+          child: Icon(Icons.check_circle_outline,
+              color: colorScheme.primary, size: 20),
+        ),
       RecordingStatus.transcribing => CircleAvatar(
-        backgroundColor: colorScheme.tertiaryContainer,
-        child: Icon(Icons.auto_fix_high, color: colorScheme.tertiary, size: 20),
-      ),
+          backgroundColor: colorScheme.tertiaryContainer,
+          child:
+              Icon(Icons.auto_fix_high, color: colorScheme.tertiary, size: 20),
+        ),
       RecordingStatus.done => CircleAvatar(
-        backgroundColor: colorScheme.secondaryContainer,
-        child: Icon(Icons.description_outlined, color: colorScheme.secondary, size: 20),
-      ),
+          backgroundColor: colorScheme.secondaryContainer,
+          child: Icon(Icons.description_outlined,
+              color: colorScheme.secondary, size: 20),
+        ),
       RecordingStatus.failed => CircleAvatar(
-        backgroundColor: colorScheme.errorContainer,
-        child: Icon(Icons.error_outline, color: colorScheme.error, size: 20),
-      ),
+          backgroundColor: colorScheme.errorContainer,
+          child: Icon(Icons.error_outline, color: colorScheme.error, size: 20),
+        ),
       RecordingStatus.idle => CircleAvatar(
-        backgroundColor: colorScheme.surfaceContainerHighest,
-        child: Icon(Icons.hourglass_empty, color: colorScheme.outline, size: 20),
-      ),
+          backgroundColor: colorScheme.surfaceContainerHighest,
+          child:
+              Icon(Icons.hourglass_empty, color: colorScheme.outline, size: 20),
+        ),
     };
   }
 }
@@ -145,12 +150,36 @@ class _StatusChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     final (label, bgColor, fgColor) = switch (status) {
-      RecordingStatus.idle => ('Pendiente', colorScheme.surfaceContainerHighest, colorScheme.outline),
-      RecordingStatus.recording => ('Grabando', colorScheme.errorContainer, colorScheme.error),
-      RecordingStatus.saved => ('Guardado', colorScheme.primaryContainer, colorScheme.primary),
-      RecordingStatus.transcribing => ('Transcribiendo', colorScheme.tertiaryContainer, colorScheme.tertiary),
-      RecordingStatus.done => ('Completado', colorScheme.secondaryContainer, colorScheme.secondary),
-      RecordingStatus.failed => ('Error', colorScheme.errorContainer, colorScheme.error),
+      RecordingStatus.idle => (
+          'Pendiente',
+          colorScheme.surfaceContainerHighest,
+          colorScheme.outline
+        ),
+      RecordingStatus.recording => (
+          'Grabando',
+          colorScheme.errorContainer,
+          colorScheme.error
+        ),
+      RecordingStatus.saved => (
+          'Guardado',
+          colorScheme.primaryContainer,
+          colorScheme.primary
+        ),
+      RecordingStatus.transcribing => (
+          'Transcribiendo',
+          colorScheme.tertiaryContainer,
+          colorScheme.tertiary
+        ),
+      RecordingStatus.done => (
+          'Completado',
+          colorScheme.secondaryContainer,
+          colorScheme.secondary
+        ),
+      RecordingStatus.failed => (
+          'Error',
+          colorScheme.errorContainer,
+          colorScheme.error
+        ),
     };
 
     return Container(
@@ -162,9 +191,9 @@ class _StatusChip extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: fgColor,
-          fontWeight: FontWeight.w600,
-        ),
+              color: fgColor,
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }
