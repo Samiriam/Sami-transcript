@@ -1,5 +1,59 @@
 # Bitacora Tecnica — Sami Transcribe
 
+## 2026-05-02 (Ajuste final: reactivar modelo base y mantener API de resumen separada)
+
+### Cambio solicitado
+- El usuario pidio no eliminar `base`, porque puede servir en telefonos con mejores recursos que el dispositivo actual.
+
+### Ajuste aplicado
+- `base` vuelve a estar disponible en el selector local.
+- Se mantiene la recomendacion de usar `tiny` en equipos antiguos.
+- Se reduce la agresividad de Whisper local por modelo:
+  - `tiny`: `threads=2`
+  - `base` y superiores: `threads=1`, `nProcessors=1`
+- La configuracion de API para resumen sigue separada de la transcripcion.
+
+### Resultado
+- No se bloquea el uso de `base` en otros telefonos.
+- Se intenta que `base` tenga mas probabilidad de funcionar incluso en equipos justos al bajar concurrencia CPU.
+
+### Verificacion
+- `flutter analyze`: sin errores; persisten 4 infos por `RadioListTile` deprecado.
+- `flutter test`: exitoso.
+
+## 2026-05-02 (Defectos finales: modelos locales pesados y API separada de resumen)
+
+### Problema reportado
+- En dispositivo real el modelo local mas pequeno funciona pero con baja calidad.
+- El modelo local intermedio vuelve a producir pantallazo blanco/cierre.
+- No existia forma visible de ingresar una API separada para resumen; parecia compartir la de transcripcion.
+
+### Decision aplicada
+- En Android se deshabilitan para uso local los modelos Whisper mayores a `tiny`.
+- Motivo: la evidencia real del dispositivo muestra cierre repetido por recursos; es preferible forzar estabilidad local y derivar mejor calidad a APIs cloud.
+
+### Fix aplicado
+- `TranscriptionConfig`:
+  - agrega configuracion independiente para resumen:
+    - `summaryOpenAiKey`
+    - `summaryOpenAiBaseUrl`
+    - `summaryOpenAiModel`
+    - `summaryAssemblyAiKey`
+  - en Android, si habia un modelo local distinto de `tiny`, se normaliza a `tiny` al cargar configuracion.
+- `SettingsScreen`:
+  - el selector de modelo local en Android deja solo `tiny`.
+  - se agregan campos propios para API de resumen OpenAI/OpenRouter y AssemblyAI.
+  - se deja nota clara: OpenRouter es adecuado para resumen via `/chat/completions`; para transcripcion solo sirve si el proveedor expone `/audio/transcriptions`.
+
+### Resultado funcional
+- La transcripcion local en Android queda orientada a estabilidad, no a maxima calidad.
+- Para mejor calidad de transcripcion o resumen, la ruta recomendada es cloud/API.
+- La API de resumen ya no depende de reutilizar obligatoriamente la de transcripcion.
+
+### Verificacion
+- `flutter analyze`: sin errores, 4 infos por `RadioListTile` deprecado.
+- `flutter test`: exitoso.
+
 ## 2026-05-02 (Exportacion PDF/TXT, resumen configurable y reemplazo de modelo local)
 
 ### Problema reportado

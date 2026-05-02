@@ -248,6 +248,8 @@ Cuando la beta personal esté estable, el siguiente camino será:
 | 2026-05-02 | Auditoria post-crash, modelos Whisper e icono externo | `tiny` como default nuevo, Whisper local limitado a 2 threads, icono Android apuntando a drawable gótico; APK fuente generado a las 14:59, copia final bloqueada por archivo en uso |
 | 2026-05-02 | APK debug final regenerada tras liberar archivo bloqueado | `build\\app\\outputs\\flutter-apk\\app-debug.apk` generado correctamente a las 15:02 |
 | 2026-05-02 | Mejoras de exportacion/resumen/modelos | PDF/TXT con selector de ubicacion, resumen local estructurado, motor de resumen independiente, borrado de transcripcion y build fuente a las 15:39; copia final a `flutter-apk` bloqueada por archivo abierto |
+| 2026-05-02 | Mitigacion final de modelos locales y API separada para resumen | En Android Whisper local queda limitado a `tiny`; resumen OpenAI/OpenRouter y AssemblyAI con configuracion independiente |
+| 2026-05-02 | Ajuste final solicitado por usuario | `base` vuelve a estar disponible; se baja agresividad de CPU por modelo y se mantiene API de resumen separada |
 
 ---
 

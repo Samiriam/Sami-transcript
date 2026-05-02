@@ -57,12 +57,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: Icon(Icons.memory_outlined),
               title: Text('Rendimiento local'),
               subtitle: Text(
-                'Tiny es el recomendado para evitar cierres por CPU/memoria. Cambiar modelo no borra los modelos ya descargados.',
+                'Tiny es el mas estable. Base puede funcionar en equipos mejores o con paciencia. Small sigue siendo riesgoso en telefonos antiguos.',
               ),
             ),
           ],
           _SectionHeader(title: 'Resumen'),
           _SummaryEngineSelector(config: config),
+          if (config.summaryEngine == SummaryEngine.openai) ...[
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text('API Key resumen'),
+              subtitle: Text(
+                config.summaryOpenAiKey.isEmpty
+                    ? 'No configurada'
+                    : '${config.summaryOpenAiKey.substring(0, 8)}...',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showApiKeyDialog(
+                context,
+                title: 'API Key resumen OpenAI/OpenRouter',
+                current: config.summaryOpenAiKey,
+                onSave: (value) => config.setSummaryOpenAiConfig(apiKey: value),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.link),
+              title: const Text('URL base resumen'),
+              subtitle: Text(config.summaryOpenAiBaseUrl),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showApiKeyDialog(
+                context,
+                title: 'URL base resumen',
+                current: config.summaryOpenAiBaseUrl,
+                onSave: (value) => config.setSummaryOpenAiConfig(
+                  apiKey: config.summaryOpenAiKey,
+                  baseUrl: value,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: const Text('Modelo resumen'),
+              subtitle: Text(config.summaryOpenAiModel),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showApiKeyDialog(
+                context,
+                title: 'Modelo resumen OpenAI/OpenRouter',
+                current: config.summaryOpenAiModel,
+                onSave: (value) => config.setSummaryOpenAiConfig(
+                  apiKey: config.summaryOpenAiKey,
+                  model: value,
+                ),
+              ),
+            ),
+          ],
+          if (config.summaryEngine == SummaryEngine.assemblyai) ...[
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text('API Key resumen'),
+              subtitle: Text(
+                config.summaryAssemblyAiKey.isEmpty
+                    ? 'No configurada'
+                    : '${config.summaryAssemblyAiKey.substring(0, 8)}...',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showApiKeyDialog(
+                context,
+                title: 'AssemblyAI API Key resumen',
+                current: config.summaryAssemblyAiKey,
+                onSave: (value) => config.setSummaryAssemblyAiKey(value),
+              ),
+            ),
+          ],
           if (config.engine == TranscriptionEngine.openai) ...[
             ListTile(
               leading: const Icon(Icons.key),
@@ -373,7 +439,7 @@ class _SummaryEngineSelector extends StatelessWidget {
     return switch (engine) {
       SummaryEngine.local => 'Gratis, rapido, calidad limitada',
       SummaryEngine.openai =>
-        'Mejor redaccion y estructura; requiere API key OpenAI',
+        'Mejor redaccion y estructura; API separada para OpenAI/OpenRouter',
       SummaryEngine.assemblyai => 'Resumen cloud; requiere API key AssemblyAI',
     };
   }

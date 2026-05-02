@@ -42,14 +42,17 @@ class LocalWhisperService implements TranscriptionService {
       }
 
       final whisper = Whisper(model: _model);
+      final threads = _threadCountForModel(_model);
+      final processors = _processorCountForModel(_model);
+      _log('transcribe_config threads=$threads processors=$processors');
 
       final result = await whisper.transcribe(
         transcribeRequest: TranscribeRequest(
           audio: preparedAudio.path,
           language: 'es',
           isTranslate: false,
-          threads: 2,
-          nProcessors: 1,
+          threads: threads,
+          nProcessors: processors,
         ),
       );
 
@@ -92,6 +95,32 @@ class LocalWhisperService implements TranscriptionService {
 
   void _log(String message) {
     debugPrint('[LocalWhisper] $message');
+  }
+
+  int _threadCountForModel(WhisperModel model) {
+    return switch (model) {
+      WhisperModel.tiny => 2,
+      WhisperModel.base => 1,
+      WhisperModel.small ||
+      WhisperModel.medium ||
+      WhisperModel.largeV1 ||
+      WhisperModel.largeV2 =>
+        1,
+      WhisperModel.none => 1,
+    };
+  }
+
+  int _processorCountForModel(WhisperModel model) {
+    return switch (model) {
+      WhisperModel.tiny => 1,
+      WhisperModel.base => 1,
+      WhisperModel.small ||
+      WhisperModel.medium ||
+      WhisperModel.largeV1 ||
+      WhisperModel.largeV2 =>
+        1,
+      WhisperModel.none => 1,
+    };
   }
 }
 
