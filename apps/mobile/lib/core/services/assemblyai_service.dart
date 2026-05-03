@@ -133,7 +133,7 @@ class AssemblyAISummaryService implements SummaryService {
   final String baseUrl;
 
   @override
-  Future<SummaryResult> summarize(String fullText) async {
+  Future<SummaryResult> summarize(String fullText, {SummaryMode mode = SummaryMode.meeting}) async {
     final uri = Uri.parse('$baseUrl/lemlist/summarize');
     final response = await http.post(
       uri,
@@ -149,7 +149,7 @@ class AssemblyAISummaryService implements SummaryService {
     );
 
     if (response.statusCode != 200) {
-      final fallback = _localSummary(fullText);
+      final fallback = _localSummary(fullText, mode: mode);
       return SummaryResult(
           summary: fallback, engine: TranscriptionEngine.assemblyai);
     }
@@ -161,12 +161,21 @@ class AssemblyAISummaryService implements SummaryService {
     );
   }
 
-  String _localSummary(String text) {
+  String _localSummary(String text, {SummaryMode mode = SummaryMode.meeting}) {
     final sentences = text
         .split(RegExp(r'[.!?]+'))
         .where((s) => s.trim().isNotEmpty)
         .toList();
     if (sentences.length <= 3) return text;
-    return '${sentences.take(5).join('. ')}.';
+
+    final buffer = StringBuffer();
+    if (mode == SummaryMode.meeting) {
+      buffer.writeln('Resumen de reunion (extractivo)');
+      buffer.writeln(sentences.take(5).join('. '));
+    } else {
+      buffer.writeln('Apuntes (extractivo)');
+      buffer.writeln(sentences.take(5).join('. '));
+    }
+    return '$buffer.';
   }
 }

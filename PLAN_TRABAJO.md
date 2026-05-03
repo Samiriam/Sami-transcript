@@ -224,10 +224,15 @@ Cuando la beta personal esté estable, el siguiente camino será:
 - [x] Compartir audio original habilitado desde detalle.
 - [x] Mitigacion extra de crash local: Whisper default nuevo en Tiny, threads limitados e icono externo Android actualizado.
 - [x] Cambio de modelo local con descarga/reemplazo, exportacion PDF/TXT con selector y borrado de transcripcion anterior.
+- [x] Groq integrado como motor principal de transcripcion/resumen, con chunking >25 MB y fallback en cascada a otras APIs y luego local.
+- [x] Vista de transcripcion simplificada: se elimino la separacion por hablantes para priorizar texto completo y resumen.
+- [x] Resumen con dos modos (reunion/apuntes) y regeneracion automatica al cambiar de modo.
+- [x] Grabacion background en Android habilitada con foreground service para pantalla apagada o cambio de app.
+- [x] APK debug regenerada tras los ultimos cambios.
 - [ ] Implementar importacion de audios externos (Sprint 2 pendiente).
 - [ ] Agregar tests de integracion (Issue 0004).
 - [ ] Configurar signing release y generar AAB para Play Store (Issue 0005).
-- [ ] Probar en dispositivo Android real.
+- [ ] Probar en dispositivo Android real con pantalla apagada y cambio de app.
 
 ## 9. Bitácora
 
@@ -251,6 +256,11 @@ Cuando la beta personal esté estable, el siguiente camino será:
 | 2026-05-02 | Mitigacion final de modelos locales y API separada para resumen | En Android Whisper local queda limitado a `tiny`; resumen OpenAI/OpenRouter y AssemblyAI con configuracion independiente |
 | 2026-05-02 | Ajuste final solicitado por usuario | `base` vuelve a estar disponible; se baja agresividad de CPU por modelo y se mantiene API de resumen separada |
 | 2026-05-02 | Configuracion profesional de resumen y mitigacion final Whisper | Discovery de modelos OpenAI/OpenRouter, selector dinamico sin entrada manual y mitigacion de crash final con `base/small` desactivando timestamps locales |
+| 2026-05-03 | Groq + chunking + fallback | Se agrego cascada de transcripcion Groq/OpenAI/AssemblyAI/local, chunking para archivos >25 MB y persistencia automatica de API keys |
+| 2026-05-03 | UX simplificada | Se elimino el bloque de hablantes/segmentos de la vista principal y se reforzo el acceso a transcripcion desde detalle |
+| 2026-05-03 | Resumen por modo | Cambiar entre reunion/apuntes ahora regenera el resumen automaticamente tanto en IA como en local |
+| 2026-05-03 | Background recording Android | Se habilito foreground service para mantener la grabacion al apagar pantalla o cambiar de app |
+| 2026-05-03 | Build debug regenerado | `apps/mobile/build/app/outputs/flutter-apk/app-debug.apk` generado con exito |
 
 ---
 

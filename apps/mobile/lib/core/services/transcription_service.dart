@@ -1,6 +1,8 @@
-enum TranscriptionEngine { local, openai, assemblyai }
+enum TranscriptionEngine { local, openai, groq, assemblyai }
 
-enum SummaryEngine { local, openai, assemblyai }
+enum SummaryEngine { local, openai, groq, assemblyai }
+
+enum SummaryMode { meeting, notes }
 
 class TranscriptionResult {
   const TranscriptionResult({
@@ -48,5 +50,5 @@ class SummaryResult {
 }
 
 abstract class SummaryService {
-  Future<SummaryResult> summarize(String fullText);
+  Future<SummaryResult> summarize(String fullText, {SummaryMode mode});
 }

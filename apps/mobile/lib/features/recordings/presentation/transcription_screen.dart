@@ -18,27 +18,26 @@ class TranscriptionScreen extends StatefulWidget {
 
 class _TranscriptionScreenState extends State<TranscriptionScreen> {
   String? _fullText;
-  List<Map<String, dynamic>> _segments = [];
   bool _isLoading = true;
   String? _summary;
   bool _isEditing = false;
   final _editController = TextEditingController();
+  SummaryMode _summaryMode = SummaryMode.meeting;
 
   @override
   void initState() {
     super.initState();
+    _summaryMode = context.read<TranscriptionConfig>().summaryMode;
     _loadTranscription();
   }
 
   Future<void> _loadTranscription() async {
     final provider = context.read<TranscriptionProvider>();
     final text = await provider.getTranscriptionText(widget.recording.id);
-    final segments = await provider.getSegments(widget.recording.id);
 
     if (!mounted) return;
     setState(() {
       _fullText = text;
-      _segments = segments;
       _isLoading = false;
     });
   }
@@ -96,7 +95,6 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       if (!mounted) return;
       setState(() {
         _fullText = null;
-        _segments = [];
         _summary = null;
         _isEditing = false;
       });
@@ -294,17 +292,6 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         _buildEngineBadge(context),
         const SizedBox(height: 16),
         if (_isEditing) _buildEditor() else _buildTranscriptView(context),
-        if (_segments.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text(
-            'Segmentos',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 8),
-          ..._segments.map((seg) => _SegmentCard(segment: seg)),
-        ],
         const SizedBox(height: 24),
         _buildSummarySection(context, colorScheme),
       ],
@@ -442,11 +429,13 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     final label = switch (config.engine) {
       TranscriptionEngine.local => 'Motor local (Whisper)',
       TranscriptionEngine.openai => 'Transcripcion con IA (OpenAI)',
+      TranscriptionEngine.groq => 'Transcripcion con IA (Groq)',
       TranscriptionEngine.assemblyai => 'Transcripcion con IA (AssemblyAI)',
     };
     final icon = switch (config.engine) {
       TranscriptionEngine.local => Icons.phone_android,
       TranscriptionEngine.openai => Icons.cloud_done_outlined,
+      TranscriptionEngine.groq => Icons.bolt,
       TranscriptionEngine.assemblyai => Icons.cloud_done_outlined,
     };
     final badgeColor = isLocal ? colorScheme.tertiary : Colors.green;
@@ -504,6 +493,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
 
   Widget _buildSummarySection(BuildContext context, ColorScheme colorScheme) {
     final provider = context.watch<TranscriptionProvider>();
+    final config = context.read<TranscriptionConfig>();
     final isBusy = provider.summaryStatus == SummaryStatus.connecting ||
         provider.summaryStatus == SummaryStatus.generating;
 
@@ -537,6 +527,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
           ],
         ),
         const SizedBox(height: 8),
+        _buildSummaryModeSelector(context, config),
+        const SizedBox(height: 8),
         if (isBusy) _buildSummaryProgress(context, provider),
         if (provider.summaryStatus == SummaryStatus.error &&
             provider.summaryError != null)
@@ -558,12 +550,47 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     );
   }
 
+  Widget _buildSummaryModeSelector(BuildContext context, TranscriptionConfig config) {
+    return SegmentedButton<SummaryMode>(
+      segments: const [
+        ButtonSegment(
+          value: SummaryMode.meeting,
+          label: Text('Reunion'),
+          icon: Icon(Icons.groups, size: 18),
+        ),
+        ButtonSegment(
+          value: SummaryMode.notes,
+          label: Text('Apuntes'),
+          icon: Icon(Icons.school_outlined, size: 18),
+        ),
+      ],
+      selected: {_summaryMode},
+      onSelectionChanged: (modes) async {
+        final nextMode = modes.first;
+        if (nextMode == _summaryMode) return;
+
+        setState(() {
+          _summaryMode = nextMode;
+          _summary = null;
+        });
+        await config.setSummaryMode(nextMode);
+
+        if (!mounted || _fullText == null || _fullText!.trim().isEmpty) {
+          return;
+        }
+
+        await _generateSummary();
+      },
+    );
+  }
+
   Widget _buildSummaryEngineChip(BuildContext context) {
     final config = context.read<TranscriptionConfig>();
     final isLocal = config.summaryEngine == SummaryEngine.local;
     final label = switch (config.summaryEngine) {
       SummaryEngine.local => 'Local',
       SummaryEngine.openai => 'IA (OpenAI)',
+      SummaryEngine.groq => 'IA (Groq)',
       SummaryEngine.assemblyai => 'IA (AssemblyAI)',
     };
     final icon = isLocal ? Icons.phone_android : Icons.auto_awesome;
@@ -675,66 +702,6 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
                     ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SegmentCard extends StatelessWidget {
-  const _SegmentCard({required this.segment});
-
-  final Map<String, dynamic> segment;
-
-  String _formatTime(double seconds) {
-    final mins = (seconds ~/ 60).toString().padLeft(2, '0');
-    final secs = (seconds % 60).toInt().toString().padLeft(2, '0');
-    return '$mins:$secs';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final speaker = segment['speaker_label'] as String? ?? 'Hablante 1';
-    final start = (segment['start_time'] as num?)?.toDouble() ?? 0.0;
-    final end = (segment['end_time'] as num?)?.toDouble() ?? 0.0;
-    final text = segment['text'] as String? ?? '';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    speaker,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${_formatTime(start)} - ${_formatTime(end)}',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(text, style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
       ),

@@ -40,10 +40,18 @@ class AudioRecorderService {
     _currentRecordingPath = p.join(recordingsDirPath, fileName);
 
     await _recorder.start(
-      const RecordConfig(
+      RecordConfig(
         encoder: AudioEncoder.wav,
         sampleRate: 16000,
         numChannels: 1,
+        androidConfig: Platform.isAndroid
+            ? const AndroidRecordConfig(
+                service: AndroidService(
+                  title: 'Sami Transcribe',
+                  content: 'Grabando audio en segundo plano',
+                ),
+              )
+            : const AndroidRecordConfig(),
       ),
       path: _currentRecordingPath!,
     );

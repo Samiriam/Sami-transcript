@@ -65,6 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
           _SectionHeader(title: 'Resumen'),
+          _SummaryModeSelector(config: config),
           _SummaryEngineSelector(config: config),
           if (config.summaryEngine == SummaryEngine.openai) ...[
             ListTile(
@@ -99,6 +100,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'AssemblyAI API Key resumen',
                 current: config.summaryAssemblyAiKey,
                 onSave: (value) => config.setSummaryAssemblyAiKey(value),
+              ),
+            ),
+          ],
+          if (config.summaryEngine == SummaryEngine.groq) ...[
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text('Groq API Key (resumen)'),
+              subtitle: Text(
+                config.groqKey.isEmpty
+                    ? 'No configurada'
+                    : '${config.groqKey.substring(0, 8)}...',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showApiKeyDialog(
+                context,
+                title: 'Groq API Key para resumen',
+                current: config.groqKey,
+                onSave: (value) => config.setGroqConfig(apiKey: value),
+              ),
+            ),
+            const ListTile(
+              leading: Icon(Icons.info_outline),
+              title: Text('Groq resumen'),
+              subtitle: Text(
+                'Usa llama-3.3-70b-versatile via Groq para generar resumenes. Requiere la misma API key que la transcripcion.',
               ),
             ),
           ],
@@ -149,6 +175,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   apiKey: config.openAiKey,
                   model: value,
                 ),
+              ),
+            ),
+          ],
+          if (config.engine == TranscriptionEngine.groq) ...[
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text('Groq API Key'),
+              subtitle: Text(
+                config.groqKey.isEmpty
+                    ? 'No configurada'
+                    : '${config.groqKey.substring(0, 8)}...',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showApiKeyDialog(
+                context,
+                title: 'Groq API Key',
+                current: config.groqKey,
+                onSave: (value) => config.setGroqConfig(apiKey: value),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.audiotrack),
+              title: const Text('Modelo Groq Whisper'),
+              subtitle: Text(
+                '${config.groqModel}\n'
+                '~\$0.04/hora · Tier gratuito disponible · Latencia muy baja',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showGroqModelPicker(context, config),
+            ),
+            const ListTile(
+              leading: Icon(Icons.info_outline),
+              title: Text('Groq'),
+              subtitle: Text(
+                'API ultra-rapida compatible con Whisper. Tier gratuito con limite de minutos. Obten tu key en console.groq.com.',
               ),
             ),
           ],
@@ -693,6 +754,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
   }
+
+  void _showGroqModelPicker(
+      BuildContext context, TranscriptionConfig config) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Modelo Groq Whisper',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              for (final m in TranscriptionConfig.groqModels)
+                ListTile(
+                  title: Text(m),
+                  subtitle: Text(_groqModelLabel(m)),
+                  trailing:
+                      config.groqModel == m ? const Icon(Icons.check) : null,
+                  onTap: () {
+                    config.setGroqConfig(
+                      apiKey: config.groqKey,
+                      model: m,
+                    );
+                    Navigator.of(ctx).pop();
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _groqModelLabel(String model) {
+    return switch (model) {
+      'whisper-large-v3-turbo' => 'Recomendado · Mas rapido · Multilingual',
+      'whisper-large-v3' => 'Mayor precision · Multilingual',
+      'distil-whisper-large-v3-en' => 'Solo ingles · Optimizado',
+      _ => model,
+    };
+  }
+}
+
+class _SummaryModeSelector extends StatelessWidget {
+  const _SummaryModeSelector({required this.config});
+
+  final TranscriptionConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Modo de resumen',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+        SegmentedButton<SummaryMode>(
+          segments: const [
+            ButtonSegment(
+              value: SummaryMode.meeting,
+              label: Text('Reunion'),
+              icon: Icon(Icons.groups, size: 18),
+            ),
+            ButtonSegment(
+              value: SummaryMode.notes,
+              label: Text('Apuntes'),
+              icon: Icon(Icons.school_outlined, size: 18),
+            ),
+          ],
+          selected: {config.summaryMode},
+          onSelectionChanged: (modes) {
+            config.setSummaryMode(modes.first);
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text(
+            config.summaryMode == SummaryMode.meeting
+                ? 'Enfocado en acuerdos, decisiones, acciones y riesgos de reuniones.'
+                : 'Enfocado en conceptos clave, desarrollo de temas y preguntas de repaso.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _SummaryEngineSelector extends StatelessWidget {
@@ -723,6 +883,7 @@ class _SummaryEngineSelector extends StatelessWidget {
     return switch (engine) {
       SummaryEngine.local => 'Resumen local',
       SummaryEngine.openai => 'OpenAI para resumen',
+      SummaryEngine.groq => 'Groq para resumen',
       SummaryEngine.assemblyai => 'AssemblyAI para resumen',
     };
   }
@@ -732,6 +893,8 @@ class _SummaryEngineSelector extends StatelessWidget {
       SummaryEngine.local => 'Gratis, rapido, calidad limitada',
       SummaryEngine.openai =>
         'Mejor redaccion y estructura; API separada para OpenAI/OpenRouter',
+      SummaryEngine.groq =>
+        'Usa LLM de Groq (llama-3.3-70b) · Tier gratuito · Rapido',
       SummaryEngine.assemblyai => 'Resumen cloud; requiere API key AssemblyAI',
     };
   }
@@ -740,6 +903,7 @@ class _SummaryEngineSelector extends StatelessWidget {
     return switch (engine) {
       SummaryEngine.local => Icons.phone_android,
       SummaryEngine.openai => Icons.auto_awesome,
+      SummaryEngine.groq => Icons.bolt,
       SummaryEngine.assemblyai => Icons.cloud_queue,
     };
   }
@@ -773,6 +937,7 @@ class _EngineSelector extends StatelessWidget {
     return switch (engine) {
       TranscriptionEngine.local => 'Whisper Local',
       TranscriptionEngine.openai => 'OpenAI / Compatible',
+      TranscriptionEngine.groq => 'Groq (Whisper)',
       TranscriptionEngine.assemblyai => 'AssemblyAI',
     };
   }
@@ -781,6 +946,7 @@ class _EngineSelector extends StatelessWidget {
     return switch (engine) {
       TranscriptionEngine.local => 'Sin internet, gratis, privado',
       TranscriptionEngine.openai => 'API cloud, mas preciso, requiere API key',
+      TranscriptionEngine.groq => '~\$0.04/hora, tier gratuito, latencia muy baja',
       TranscriptionEngine.assemblyai =>
         'API cloud con diarizacion, requiere API key',
     };
@@ -790,6 +956,7 @@ class _EngineSelector extends StatelessWidget {
     return switch (engine) {
       TranscriptionEngine.local => Icons.phone_android,
       TranscriptionEngine.openai => Icons.cloud,
+      TranscriptionEngine.groq => Icons.bolt,
       TranscriptionEngine.assemblyai => Icons.cloud_queue,
     };
   }

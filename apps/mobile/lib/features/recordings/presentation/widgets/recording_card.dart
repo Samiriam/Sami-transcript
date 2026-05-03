@@ -161,7 +161,7 @@ class _StatusChip extends StatelessWidget {
           colorScheme.error
         ),
       RecordingStatus.saved => (
-          'Guardado',
+          'Listo para transcribir',
           colorScheme.primaryContainer,
           colorScheme.primary
         ),
@@ -171,12 +171,12 @@ class _StatusChip extends StatelessWidget {
           colorScheme.tertiary
         ),
       RecordingStatus.done => (
-          'Completado',
+          'Transcripcion lista',
           colorScheme.secondaryContainer,
           colorScheme.secondary
         ),
       RecordingStatus.failed => (
-          'Error',
+          'Reintentar',
           colorScheme.errorContainer,
           colorScheme.error
         ),

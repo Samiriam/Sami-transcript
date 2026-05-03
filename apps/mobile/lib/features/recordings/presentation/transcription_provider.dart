@@ -11,10 +11,12 @@ import 'package:whisper_flutter_new/whisper_flutter_new.dart';
 
 import '../../../core/database/app_database.dart' as db;
 import '../../../core/services/app_logger.dart';
+import '../../../core/services/assemblyai_service.dart';
 import '../../../core/services/post_processing_service.dart';
 import '../../../core/storage/local_paths.dart';
 import '../../../core/services/local_whisper_service.dart';
 import '../../../core/services/model_manager.dart';
+import '../../../core/services/openai_service.dart';
 import '../../../core/services/transcription_config.dart';
 import '../../../core/services/transcription_service.dart';
 import '../data/recording_repository.dart';
@@ -83,113 +85,56 @@ class TranscriptionProvider extends ChangeNotifier {
         ),
       );
 
-      final service = _config.createService();
+      final attempts = _buildTranscriptionAttempts();
+      final errors = <String>[];
 
-      if (_config.engine == TranscriptionEngine.local &&
-          service is LocalWhisperService) {
-        _isModelDownloading = true;
-        _downloadProgress = 0;
-        _transcriptionStatus = 'Verificando modelo local...';
-        notifyListeners();
+      for (var i = 0; i < attempts.length; i++) {
+        final attempt = attempts[i];
+        final isFallback = i > 0;
 
-        final available = await service.isAvailable();
-        if (!available) {
-          _transcriptionStatus = 'Descargando modelo Whisper...';
-          _log('download_start');
+        try {
+          if (attempt.service is LocalWhisperService) {
+            await _prepareLocalModel(attempt.service as LocalWhisperService);
+          }
+
+          _transcriptionStatus = _statusForTranscriptionAttempt(
+            attempt.engine,
+            isFallback: isFallback,
+          );
+          _log(
+            'calling_transcribe audio=${recording.audioPath} engine=${attempt.engine.name}',
+          );
           notifyListeners();
 
-          await service.ensureModel(
-            onProgress: (progress) {
-              _downloadProgress = progress;
-              _log('download_progress: ${(progress * 100).toInt()}%');
-              notifyListeners();
-            },
+          final result = await attempt.service
+              .transcribe(recording.audioPath)
+              .timeout(_timeoutFor(recording, attempt.engine), onTimeout: () {
+            throw TranscriptionTimeoutException(
+              'La transcripcion con ${_engineLabel(attempt.engine)} excedio el tiempo esperado.',
+            );
+          });
+
+          _log(
+            'transcribe_ok engine=${attempt.engine.name} text_length=${result.text.length} segments=${result.segments.length}',
           );
-
-          _log('download_complete');
-        } else {
-          _log('model_already_available');
+          await _saveTranscriptionResult(result, recording, recordingId);
+          return;
+        } catch (e, st) {
+          errors.add('${_engineLabel(attempt.engine)}: $e');
+          _log(
+            'transcribe_attempt_error engine=${attempt.engine.name}: $e\n$st',
+          );
         }
-        _isModelDownloading = false;
-        _downloadProgress = 0;
       }
 
-      _transcriptionStatus = _config.engine == TranscriptionEngine.local
-          ? 'Preparando audio local y transcribiendo...'
-          : 'Transcribiendo con ${_config.engine.name}...';
-      _log('calling_transcribe audio=${recording.audioPath}');
-      notifyListeners();
-
-      final result = await service
-          .transcribe(recording.audioPath)
-          .timeout(_timeoutFor(recording, _config.engine), onTimeout: () {
-        throw TranscriptionTimeoutException(
-          'La transcripcion excedio el tiempo esperado y fue interrumpida. Puedes reintentar o usar OpenAI/AssemblyAI para audios importados.',
-        );
-      });
-
-      _log(
-          'transcribe_ok text_length=${result.text.length} segments=${result.segments.length}');
-
-      var processedText = result.text;
-      var processedSegments = result.segments;
-
-      if (_config.postProcessingEnabled) {
-        _transcriptionStatus = 'Mejorando coherencia del texto...';
-        notifyListeners();
-
-        final processed = _postProcessor.process(
-          result.text,
-          result.segments,
-          level: _config.postProcessingLevel,
-        );
-        processedText = processed.text;
-        processedSegments = processed.segments;
-        _log(
-            'postprocessed level=${processed.level.name} elapsed=${processed.elapsedMs}ms text_length=${processedText.length}');
-      }
-
-      final database = await _appDb.database;
-      final transcriptionId = DateTime.now().millisecondsSinceEpoch.toString();
-
-      _transcriptionStatus = 'Guardando transcripcion...';
-      notifyListeners();
-
-      final createdAt = DateTime.now().toIso8601String();
-      final batch = database.batch();
-      batch.insert('transcriptions', {
-        'id': transcriptionId,
-        'recording_id': recordingId,
-        'full_text': processedText,
-        'language': result.language,
-        'model_used': result.engine.name,
-        'created_at': createdAt,
-      });
-
-      for (var i = 0; i < processedSegments.length; i++) {
-        final segment = processedSegments[i];
-        batch.insert('segments', {
-          'id': '${transcriptionId}_$i',
-          'transcription_id': transcriptionId,
-          'speaker_label': segment.speaker ?? 'Hablante 1',
-          'speaker_name': null,
-          'start_time': segment.startTime,
-          'end_time': segment.endTime,
-          'text': segment.text,
-        });
-      }
-
-      await batch.commit(noResult: true);
-
+      _lastError = errors.join('\n');
+      _transcriptionStatus = _lastError!;
       await _repository.update(
         recording.copyWith(
-          status: RecordingStatus.done,
+          status: RecordingStatus.failed,
           updatedAt: DateTime.now(),
         ),
       );
-
-      _transcriptionStatus = 'Transcripcion completada';
-      _log('transcribe_completed');
     } catch (e, st) {
       _lastError = e.toString();
       _transcriptionStatus = 'Error: $e';
@@ -214,6 +159,182 @@ class TranscriptionProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _prepareLocalModel(LocalWhisperService service) async {
+    _isModelDownloading = true;
+    _downloadProgress = 0;
+    _transcriptionStatus = 'Verificando modelo local...';
+    notifyListeners();
+
+    final available = await service.isAvailable();
+    if (!available) {
+      _transcriptionStatus = 'Descargando modelo Whisper...';
+      _log('download_start');
+      notifyListeners();
+
+      await service.ensureModel(
+        onProgress: (progress) {
+          _downloadProgress = progress;
+          _log('download_progress: ${(progress * 100).toInt()}%');
+          notifyListeners();
+        },
+      );
+
+      _log('download_complete');
+    } else {
+      _log('model_already_available');
+    }
+    _isModelDownloading = false;
+    _downloadProgress = 0;
+  }
+
+  List<_TranscriptionAttempt> _buildTranscriptionAttempts() {
+    if (_config.engine == TranscriptionEngine.local) {
+      return [
+        _TranscriptionAttempt(
+          engine: TranscriptionEngine.local,
+          service: _config.createFallbackService(),
+        ),
+      ];
+    }
+
+    final attempts = <_TranscriptionAttempt>[];
+    final orderedEngines = <TranscriptionEngine>[
+      _config.engine,
+      ...TranscriptionEngine.values.where(
+        (engine) =>
+            engine != _config.engine && engine != TranscriptionEngine.local,
+      ),
+      TranscriptionEngine.local,
+    ];
+
+    for (final engine in orderedEngines) {
+      final service = _createServiceForEngine(engine);
+      if (service != null) {
+        attempts.add(_TranscriptionAttempt(engine: engine, service: service));
+      }
+    }
+
+    return attempts;
+  }
+
+  TranscriptionService? _createServiceForEngine(TranscriptionEngine engine) {
+    return switch (engine) {
+      TranscriptionEngine.local => _config.createFallbackService(),
+      TranscriptionEngine.groq => _config.groqKey.isEmpty
+          ? null
+          : OpenAITranscriptionService(
+              apiKey: _config.groqKey,
+              baseUrl: 'https://api.groq.com/openai/v1',
+              model: _config.groqModel,
+              enableChunking: true,
+              engineType: TranscriptionEngine.groq,
+            ),
+      TranscriptionEngine.openai => _config.openAiKey.isEmpty
+          ? null
+          : OpenAITranscriptionService(
+              apiKey: _config.openAiKey,
+              baseUrl: _config.openAiBaseUrl,
+              model: _config.openAiModel,
+              engineType: TranscriptionEngine.openai,
+            ),
+      TranscriptionEngine.assemblyai => _config.assemblyAiKey.isEmpty
+          ? null
+          : AssemblyAITranscriptionService(apiKey: _config.assemblyAiKey),
+    };
+  }
+
+  String _statusForTranscriptionAttempt(
+    TranscriptionEngine engine, {
+    required bool isFallback,
+  }) {
+    if (engine == TranscriptionEngine.local) {
+      return isFallback
+          ? 'Las APIs no respondieron. Usando motor local...'
+          : 'Preparando audio local y transcribiendo...';
+    }
+
+    if (isFallback) {
+      return 'Reintentando con ${_engineLabel(engine)}...';
+    }
+
+    return 'Transcribiendo con ${_engineLabel(engine)}...';
+  }
+
+  String _engineLabel(TranscriptionEngine engine) {
+    return switch (engine) {
+      TranscriptionEngine.local => 'motor local',
+      TranscriptionEngine.groq => 'Groq',
+      TranscriptionEngine.openai => 'OpenAI',
+      TranscriptionEngine.assemblyai => 'AssemblyAI',
+    };
+  }
+
+  Future<void> _saveTranscriptionResult(
+    TranscriptionResult result,
+    Recording recording,
+    String recordingId,
+  ) async {
+    var processedText = result.text;
+    var processedSegments = result.segments;
+
+    if (_config.postProcessingEnabled) {
+      _transcriptionStatus = 'Mejorando coherencia del texto...';
+      notifyListeners();
+
+      final processed = _postProcessor.process(
+        result.text,
+        result.segments,
+        level: _config.postProcessingLevel,
+      );
+      processedText = processed.text;
+      processedSegments = processed.segments;
+      _log(
+          'postprocessed level=${processed.level.name} elapsed=${processed.elapsedMs}ms text_length=${processedText.length}');
+    }
+
+    final database = await _appDb.database;
+    final transcriptionId = DateTime.now().millisecondsSinceEpoch.toString();
+
+    _transcriptionStatus = 'Guardando transcripcion...';
+    notifyListeners();
+
+    final createdAt = DateTime.now().toIso8601String();
+    final batch = database.batch();
+    batch.insert('transcriptions', {
+      'id': transcriptionId,
+      'recording_id': recordingId,
+      'full_text': processedText,
+      'language': result.language,
+      'model_used': result.engine.name,
+      'created_at': createdAt,
+    });
+
+    for (var i = 0; i < processedSegments.length; i++) {
+      final segment = processedSegments[i];
+      batch.insert('segments', {
+        'id': '${transcriptionId}_$i',
+        'transcription_id': transcriptionId,
+        'speaker_label': segment.speaker ?? 'Hablante 1',
+        'speaker_name': null,
+        'start_time': segment.startTime,
+        'end_time': segment.endTime,
+        'text': segment.text,
+      });
+    }
+
+    await batch.commit(noResult: true);
+
+    await _repository.update(
+      recording.copyWith(
+        status: RecordingStatus.done,
+        updatedAt: DateTime.now(),
+      ),
+    );
+
+    _transcriptionStatus = 'Transcripcion completada';
+    _log('transcribe_completed');
+  }
+
   void _startTranscriptionTicker() {
     _transcriptionTicker?.cancel();
     _transcriptionTicker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -229,7 +350,10 @@ class TranscriptionProvider extends ChangeNotifier {
       TranscriptionEngine.local => Duration(
           seconds: (audioSeconds * 2 + 120).clamp(420, 1200),
         ),
-      TranscriptionEngine.openai || TranscriptionEngine.assemblyai => Duration(
+      TranscriptionEngine.openai ||
+      TranscriptionEngine.groq ||
+      TranscriptionEngine.assemblyai =>
+        Duration(
           seconds: (audioSeconds * 2 + 180).clamp(420, 1800),
         ),
     };
@@ -357,16 +481,18 @@ class TranscriptionProvider extends ChangeNotifier {
     _summaryError = null;
     _summaryStatusMessage = 'Preparando resumen...';
 
-    final summaryService = _config.createSummaryService();
-    if (summaryService == null) {
+    final mode = _config.summaryMode;
+
+    final attempts = _buildSummaryAttempts();
+    if (attempts.isEmpty) {
       _summaryStatus = SummaryStatus.generating;
-      _summaryStatusMessage = 'Generando resumen local...';
+      _summaryStatusMessage = 'Generando resumen local (${mode == SummaryMode.meeting ? "reunion" : "apuntes"})...';
       notifyListeners();
       try {
-        final result = _localSummary(text);
+        final result = _localSummary(text, mode: mode);
         _summaryStatus = SummaryStatus.done;
         _summaryStatusMessage = 'Resumen local completado';
-        AppLogger.instance.info('Summary', 'Local summary generated (${result.length} chars)');
+        AppLogger.instance.info('Summary', 'Local summary generated (${result.length} chars, mode=${mode.name})');
         notifyListeners();
         return result;
       } catch (e, st) {
@@ -379,116 +505,357 @@ class TranscriptionProvider extends ChangeNotifier {
       }
     }
 
-    _summaryStatus = SummaryStatus.connecting;
-    _summaryStatusMessage = 'Conectando a ${_config.summaryEngine.name}...';
-    AppLogger.instance.info('Summary', 'Connecting to ${_config.summaryEngine.name}');
-    notifyListeners();
+    final errors = <String>[];
+    for (var i = 0; i < attempts.length; i++) {
+      final attempt = attempts[i];
+      final isFallback = i > 0;
 
-    try {
-      _summaryStatus = SummaryStatus.generating;
-      _summaryStatusMessage = 'Generando resumen con ${_config.summaryEngine.name}...';
-      notifyListeners();
-
-      final result = await summaryService
-          .summarize(text)
-          .timeout(const Duration(minutes: 5), onTimeout: () {
-        throw SummaryTimeoutException(
-          'El resumen excedio 5 minutos. Verifica tu conexion o intenta con resumen local.',
-        );
-      });
-
-      _summaryStatus = SummaryStatus.done;
-      _summaryStatusMessage = 'Conexion exitosa. Resumen completado.';
-      AppLogger.instance.info('Summary', 'API summary generated (${result.summary.length} chars)');
-      notifyListeners();
-      return result.summary;
-    } on SummaryTimeoutException {
-      _summaryStatus = SummaryStatus.error;
-      _summaryError = 'Tiempo de espera agotado. Verifica tu conexion a internet.';
-      _summaryStatusMessage = _summaryError!;
-      AppLogger.instance.warning('Summary', 'Summary timed out, falling back to local');
-      notifyListeners();
-      return _localSummary(text);
-    } catch (e, st) {
-      _summaryStatus = SummaryStatus.error;
-      _summaryError = 'Error de API: $e';
-      _summaryStatusMessage = _summaryError!;
-      AppLogger.instance.error('Summary', 'API summary failed: $e', st.toString());
+      _summaryStatus = i == 0 ? SummaryStatus.connecting : SummaryStatus.generating;
+      _summaryStatusMessage = isFallback
+          ? 'Reintentando resumen con ${_engineLabel(attempt.engine)}...'
+          : 'Generando resumen con ${_engineLabel(attempt.engine)}...';
+      AppLogger.instance.info(
+        'Summary',
+        'Generating summary with ${attempt.engine.name} mode=${mode.name}',
+      );
       notifyListeners();
 
       try {
-        final fallback = _localSummary(text);
-        _summaryStatus = SummaryStatus.doneWithFallback;
-        _summaryStatusMessage = 'Resumen local generado como alternativa (la API falló).';
-        AppLogger.instance.info('Summary', 'Fallback to local summary');
+        final result = await attempt.service
+            .summarize(text, mode: mode)
+            .timeout(const Duration(minutes: 5), onTimeout: () {
+          throw SummaryTimeoutException(
+            'El resumen con ${_engineLabel(attempt.engine)} excedio 5 minutos.',
+          );
+        });
+
+        _summaryStatus = isFallback ? SummaryStatus.doneWithFallback : SummaryStatus.done;
+        _summaryStatusMessage = isFallback
+            ? 'Resumen completado con ${_engineLabel(attempt.engine)} como alternativa.'
+            : 'Resumen completado.';
+        AppLogger.instance.info(
+          'Summary',
+          'API summary generated (${result.summary.length} chars, engine=${attempt.engine.name})',
+        );
         notifyListeners();
-        return fallback;
-      } catch (_) {
-        return null;
+        return result.summary;
+      } catch (e, st) {
+        errors.add('${_engineLabel(attempt.engine)}: $e');
+        AppLogger.instance.error(
+          'Summary',
+          'API summary failed with ${attempt.engine.name}: $e',
+          st.toString(),
+        );
       }
+    }
+
+    try {
+      final fallback = _localSummary(text, mode: mode);
+      _summaryStatus = SummaryStatus.doneWithFallback;
+      _summaryStatusMessage = 'Resumen local generado como alternativa.';
+      AppLogger.instance.info('Summary', 'Fallback to local summary');
+      notifyListeners();
+      return fallback;
+    } catch (e, st) {
+      _summaryStatus = SummaryStatus.error;
+      _summaryError = errors.isEmpty ? 'Error al generar resumen: $e' : errors.join('\n');
+      _summaryStatusMessage = _summaryError!;
+      AppLogger.instance.error('Summary', 'Local summary fallback failed: $e', st.toString());
+      notifyListeners();
+      return null;
     }
   }
 
-  String _localSummary(String text) {
+  List<_SummaryAttempt> _buildSummaryAttempts() {
+    if (_config.summaryEngine == SummaryEngine.local) {
+      return const [];
+    }
+
+    final attempts = <_SummaryAttempt>[];
+    final orderedEngines = <SummaryEngine>[
+      _config.summaryEngine,
+      ...SummaryEngine.values.where(
+        (engine) =>
+            engine != _config.summaryEngine && engine != SummaryEngine.local,
+      ),
+    ];
+
+    for (final engine in orderedEngines) {
+      final service = _createSummaryServiceForEngine(engine);
+      if (service != null) {
+        attempts.add(_SummaryAttempt(engine: _mapSummaryEngine(engine), service: service));
+      }
+    }
+
+    return attempts;
+  }
+
+  SummaryService? _createSummaryServiceForEngine(SummaryEngine engine) {
+    return switch (engine) {
+      SummaryEngine.local => null,
+      SummaryEngine.groq => _config.groqKey.isEmpty
+          ? null
+          : OpenAISummaryService(
+              apiKey: _config.groqKey,
+              baseUrl: 'https://api.groq.com/openai/v1',
+              model: 'llama-3.3-70b-versatile',
+              engineType: TranscriptionEngine.groq,
+            ),
+      SummaryEngine.openai => _config.summaryOpenAiKey.isEmpty
+          ? null
+          : OpenAISummaryService(
+              apiKey: _config.summaryOpenAiKey,
+              baseUrl: _config.summaryOpenAiBaseUrl,
+              model: _config.summaryOpenAiModel,
+              engineType: TranscriptionEngine.openai,
+            ),
+      SummaryEngine.assemblyai => _config.summaryAssemblyAiKey.isEmpty
+          ? null
+          : AssemblyAISummaryService(
+              apiKey: _config.summaryAssemblyAiKey,
+            ),
+    };
+  }
+
+  TranscriptionEngine _mapSummaryEngine(SummaryEngine engine) {
+    return switch (engine) {
+      SummaryEngine.local => TranscriptionEngine.local,
+      SummaryEngine.groq => TranscriptionEngine.groq,
+      SummaryEngine.openai => TranscriptionEngine.openai,
+      SummaryEngine.assemblyai => TranscriptionEngine.assemblyai,
+    };
+  }
+
+  String _localSummary(String text, {SummaryMode mode = SummaryMode.meeting}) {
     final cleanedText = _cleanupTranscriptText(text);
-    final sentences = cleanedText
+    final sentences = _extractMeaningfulSentences(cleanedText);
+
+    if (sentences.isEmpty) return cleanedText;
+
+    if (mode == SummaryMode.meeting) {
+      return _buildMeetingSummary(sentences, cleanedText);
+    } else {
+      return _buildNotesSummary(sentences, cleanedText);
+    }
+  }
+
+  List<String> _extractMeaningfulSentences(String text) {
+    return text
         .split(RegExp(r'[.!?]+'))
         .map((s) => s.trim())
         .where((s) => s.length > 12)
         .toList();
+  }
 
-    if (sentences.isEmpty) return cleanedText;
-
-    final selected = <String>[];
-    selected.addAll(sentences.take(2));
-
-    final important = sentences.where((sentence) {
-      final lower = sentence.toLowerCase();
-      return lower.contains('acuerdo') ||
-          lower.contains('decid') ||
-          lower.contains('pendiente') ||
-          lower.contains('tarea') ||
-          lower.contains('próxim') ||
-          lower.contains('proxim') ||
-          lower.contains('problema') ||
-          lower.contains('riesgo');
-    });
-    for (final sentence in important) {
-      if (selected.length >= 8) break;
-      if (!selected.contains(sentence)) selected.add(sentence);
-    }
-
+  String _buildMeetingSummary(List<String> sentences, String fullText) {
     final buffer = StringBuffer();
-    buffer.writeln('Resumen ejecutivo');
-    buffer.writeln(_ensureSentence(selected.take(3).join(' ')));
+
+    buffer.writeln('## Resumen ejecutivo');
+    final executive = sentences.take(3).map(_ensureSentence).join(' ');
+    buffer.writeln(executive);
     buffer.writeln();
-    buffer.writeln('Temas principales');
-    for (final sentence in selected.take(5)) {
-      buffer.writeln('- ${_ensureSentence(sentence)}');
+
+    buffer.writeln('## Temas tratados');
+    final topicSentences = <String>[];
+    final topicKeywords = [
+      'tratar', 'hablar', 'tratar', 'tema', 'punto', 'asunto',
+      'respecto a', 'sobre', 'referente', 'relacionado',
+      'proyecto', 'sprint', 'plan', 'avance', 'estado',
+      'revisar', 'analizar', 'evaluar', 'discutir',
+    ];
+    for (final s in sentences) {
+      if (topicSentences.length >= 6) break;
+      final lower = s.toLowerCase();
+      if (topicKeywords.any((kw) => lower.contains(kw))) {
+        if (!topicSentences.contains(s)) topicSentences.add(s);
+      }
+    }
+    if (topicSentences.isEmpty) {
+      topicSentences.addAll(sentences.take(4));
+    }
+    for (final s in topicSentences) {
+      buffer.writeln('- ${_ensureSentence(s)}');
     }
     buffer.writeln();
-    buffer.writeln('Acciones o pendientes detectados');
-    final actions = selected.where((sentence) {
-      final lower = sentence.toLowerCase();
-      return lower.contains('pendiente') ||
-          lower.contains('tarea') ||
-          lower.contains('hacer') ||
-          lower.contains('próxim') ||
-          lower.contains('proxim');
+
+    buffer.writeln('## Acuerdos y decisiones');
+    final agreementKeywords = [
+      'acuerdo', 'acord', 'decid', 'confirm', 'aprobar', 'aproba',
+      'definir', 'definid', 'establecer', 'establecid',
+      'vamos a', 'sera', 'seran', 'quedo en', 'quedamos',
+    ];
+    final agreements = sentences.where((s) {
+      final lower = s.toLowerCase();
+      return agreementKeywords.any((kw) => lower.contains(kw));
     }).toList();
-    if (actions.isEmpty) {
-      buffer.writeln('- No identificado en el resumen local.');
+    if (agreements.isEmpty) {
+      buffer.writeln('- Sin acuerdos formales identificados.');
     } else {
-      for (final action in actions.take(5)) {
-        buffer.writeln('- ${_ensureSentence(action)}');
+      for (final a in agreements.take(5)) {
+        buffer.writeln('- ${_ensureSentence(a)}');
       }
     }
     buffer.writeln();
-    buffer.writeln('Nota');
-    buffer.writeln(
-      'Este resumen local es extractivo y no corrige todos los errores de transcripcion. Para mejor calidad usa OpenAI o AssemblyAI como motor de resumen.',
-    );
+
+    buffer.writeln('## Acciones pendientes');
+    final actionKeywords = [
+      'pendiente', 'tarea', 'hacer', 'falta', 'necesit',
+      'proximo', 'proxima', 'siguiente', 'plazo', 'entrega',
+      'antes de', 'para el', 'febrero', 'marzo', 'abril',
+      'semana que', 'mañana', 'lunes', 'martes', 'miercoles',
+    ];
+    final actions = sentences.where((s) {
+      final lower = s.toLowerCase();
+      return actionKeywords.any((kw) => lower.contains(kw));
+    }).toList();
+    if (actions.isEmpty) {
+      buffer.writeln('- Sin acciones pendientes explicitas.');
+    } else {
+      for (final a in actions.take(6)) {
+        buffer.writeln('- [ ] ${_ensureSentence(a)}');
+      }
+    }
+    buffer.writeln();
+
+    buffer.writeln('## Riesgos y dudas');
+    final riskKeywords = [
+      'riesgo', 'problema', 'duda', 'incertidum', 'bloqueo',
+      'preocup', 'dificultad', 'impedimento', 'atraso', 'retraso',
+      'no se', 'no sabemos', 'podria ser', 'tal vez',
+    ];
+    final risks = sentences.where((s) {
+      final lower = s.toLowerCase();
+      return riskKeywords.any((kw) => lower.contains(kw));
+    }).toList();
+    if (risks.isEmpty) {
+      buffer.writeln('- Sin riesgos evidentes.');
+    } else {
+      for (final r in risks.take(4)) {
+        buffer.writeln('- ${_ensureSentence(r)}');
+      }
+    }
+    buffer.writeln();
+
+    buffer.writeln('---');
+    buffer.writeln('*Resumen local extractivo. Para mejor calidad, usa un motor de resumen con IA.*');
+
     return buffer.toString();
+  }
+
+  String _buildNotesSummary(List<String> sentences, String fullText) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('## Tema principal');
+    buffer.writeln(_ensureSentence(sentences.take(2).join(' ')));
+    buffer.writeln();
+
+    buffer.writeln('## Conceptos clave');
+    final conceptKeywords = [
+      'define', 'definicion', 'concepto', 'significa', 'llamado',
+      'conocido como', 'se refiere', 'es un', 'es una', 'son los',
+      'tipo de', 'clasificacion', 'categoria',
+      'formula', 'ecuacion', 'teorema', 'ley', 'principio', 'regla',
+    ];
+    final concepts = sentences.where((s) {
+      final lower = s.toLowerCase();
+      return conceptKeywords.any((kw) => lower.contains(kw));
+    }).toList();
+    if (concepts.isEmpty) {
+      for (final s in sentences.take(4)) {
+        buffer.writeln('- ${_ensureSentence(s)}');
+      }
+    } else {
+      for (final c in concepts.take(8)) {
+        buffer.writeln('- **${_extractKeyPhrase(c)}**: ${_ensureSentence(c)}');
+      }
+    }
+    buffer.writeln();
+
+    buffer.writeln('## Desarrollo');
+    final developmentSentences = <String>[];
+    final devKeywords = [
+      'porque', 'por que', 'entonces', 'ademas', 'tambien',
+      'primero', 'segundo', 'luego', 'despues', 'finalmente',
+      'ejemplo', 'caso', 'instancia', 'situacion',
+      'importante', 'relevante', 'fundamental', 'necesario',
+      'diferencia', 'comparar', 'ventaja', 'desventaja',
+    ];
+    for (final s in sentences) {
+      if (developmentSentences.length >= 10) break;
+      final lower = s.toLowerCase();
+      if (devKeywords.any((kw) => lower.contains(kw))) {
+        if (!developmentSentences.contains(s)) developmentSentences.add(s);
+      }
+    }
+    if (developmentSentences.length < 3) {
+      developmentSentences.clear();
+      developmentSentences.addAll(sentences.skip(2).take(8));
+    }
+    for (final s in developmentSentences) {
+      buffer.writeln('- ${_ensureSentence(s)}');
+    }
+    buffer.writeln();
+
+    buffer.writeln('## Ejemplos');
+    final exampleKeywords = [
+      'ejemplo', 'por ejemplo', 'caso', 'instancia', 'supongamos',
+      'imaginar', 'digamos que', 'como si', 'ilustra',
+    ];
+    final examples = sentences.where((s) {
+      final lower = s.toLowerCase();
+      return exampleKeywords.any((kw) => lower.contains(kw));
+    }).toList();
+    if (examples.isEmpty) {
+      buffer.writeln('- Sin ejemplos explicitos en la transcripcion.');
+    } else {
+      for (final e in examples.take(5)) {
+        buffer.writeln('- ${_ensureSentence(e)}');
+      }
+    }
+    buffer.writeln();
+
+    buffer.writeln('## Preguntas de repaso');
+    final questionKeywords = [
+      'que es', 'como', 'cuando', 'donde', 'cual', 'cuanto',
+      'por que', 'para que', 'quien',
+    ];
+    final questions = <String>[];
+    for (final s in sentences) {
+      if (questions.length >= 5) break;
+      final lower = s.toLowerCase();
+      if (questionKeywords.any((kw) => lower.contains(kw))) {
+        questions.add(_ensureSentence(s).replaceAll('?', '?'));
+      }
+    }
+    if (questions.length < 3) {
+      final autoQuestions = _generateReviewQuestions(sentences);
+      questions.addAll(autoQuestions);
+    }
+    for (var i = 0; i < questions.length && i < 5; i++) {
+      buffer.writeln('${i + 1}. ${questions[i]}');
+    }
+    buffer.writeln();
+
+    buffer.writeln('---');
+    buffer.writeln('*Resumen local extractivo. Para mejor calidad, usa un motor de resumen con IA.*');
+
+    return buffer.toString();
+  }
+
+  String _extractKeyPhrase(String sentence) {
+    final words = sentence.split(RegExp(r'\s+'));
+    if (words.length <= 4) return sentence;
+    return words.take(4).join(' ');
+  }
+
+  List<String> _generateReviewQuestions(List<String> sentences) {
+    final questions = <String>[];
+    final important = sentences.take(8).toList();
+    for (var i = 0; i < important.length && questions.length < 4; i += 2) {
+      final s = important[i];
+      questions.add('De acuerdo con la transcripcion, ${_ensureSentence(s).toLowerCase().replaceAll('.', '')}?');
+    }
+    return questions;
   }
 
   String _cleanupTranscriptText(String text) {
@@ -672,6 +1039,20 @@ class TranscriptionProvider extends ChangeNotifier {
   void _log(String message) {
     AppLogger.instance.info('TranscriptionProvider', message);
   }
+}
+
+class _TranscriptionAttempt {
+  const _TranscriptionAttempt({required this.engine, required this.service});
+
+  final TranscriptionEngine engine;
+  final TranscriptionService service;
+}
+
+class _SummaryAttempt {
+  const _SummaryAttempt({required this.engine, required this.service});
+
+  final TranscriptionEngine engine;
+  final SummaryService service;
 }
 
 class TranscriptionTimeoutException implements Exception {

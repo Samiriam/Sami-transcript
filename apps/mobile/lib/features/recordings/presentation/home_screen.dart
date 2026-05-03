@@ -79,6 +79,13 @@ class _HomeBody extends StatelessWidget {
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              'Flujo recomendado: graba o importa, abre la tarjeta y toca "Transcribir ahora".',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+            ),
           ],
           const SizedBox(height: 20),
           FilledButton.icon(
@@ -165,7 +172,7 @@ class _RecordingIndicator extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Toca "Detener" para finalizar',
+            'Puedes bloquear la pantalla o cambiar de app mientras esta grabando.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),

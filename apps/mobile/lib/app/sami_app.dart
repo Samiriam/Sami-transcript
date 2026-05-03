@@ -13,16 +13,50 @@ import '../features/recordings/presentation/recording_provider.dart';
 import '../features/recordings/presentation/transcription_provider.dart';
 import '../features/recordings/presentation/home_screen.dart';
 
-class SamiApp extends StatelessWidget {
-  SamiApp({super.key});
+class SamiApp extends StatefulWidget {
+  const SamiApp({super.key});
 
+  @override
+  State<SamiApp> createState() => _SamiAppState();
+}
+
+class _SamiAppState extends State<SamiApp> {
   final _db = AppDatabase();
   final _themeService = ThemeService();
   final _transcriptionConfig = TranscriptionConfig();
+  late final Future<void> _bootstrapFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrapFuture = _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await Future.wait([
+      _themeService.load(),
+      _transcriptionConfig.load(),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
+    return FutureBuilder<void>(
+      future: _bootstrapFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Sami Transcribe',
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            home: const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: _themeService),
         Provider<RecordingRepository>(
@@ -68,6 +102,8 @@ class SamiApp extends StatelessWidget {
           );
         },
       ),
+        );
+      },
     );
   }
 }

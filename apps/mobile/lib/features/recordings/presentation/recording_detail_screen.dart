@@ -96,12 +96,7 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
                   _showRenameDialog(context);
                   break;
                 case 'transcribe':
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          TranscriptionScreen(recording: widget.recording),
-                    ),
-                  );
+                  _openTranscriptionScreen(context);
                   break;
                 case 'export':
                   _exportTranscription(context);
@@ -115,7 +110,7 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
               const PopupMenuItem(value: 'rename', child: Text('Renombrar')),
               const PopupMenuItem(
                 value: 'transcribe',
-                child: Text('Transcribir'),
+                child: Text('Abrir transcripcion'),
               ),
               const PopupMenuItem(
                 value: 'share_audio',
@@ -222,6 +217,13 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            _TranscriptionCallout(
+              status: r.status,
+              onTap: r.status == RecordingStatus.transcribing
+                  ? null
+                  : () => _openTranscriptionScreen(context),
+            ),
             const SizedBox(height: 20),
             Text(
               'Informacion',
@@ -254,11 +256,19 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
     return switch (status) {
       RecordingStatus.idle => 'Pendiente',
       RecordingStatus.recording => 'Grabando',
-      RecordingStatus.saved => 'Guardado',
+      RecordingStatus.saved => 'Listo para transcribir',
       RecordingStatus.transcribing => 'Transcribiendo',
-      RecordingStatus.done => 'Completado',
-      RecordingStatus.failed => 'Error',
+      RecordingStatus.done => 'Transcripcion lista',
+      RecordingStatus.failed => 'Error, reintentar',
     };
+  }
+
+  void _openTranscriptionScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TranscriptionScreen(recording: widget.recording),
+      ),
+    );
   }
 
   Future<void> _exportTranscription(BuildContext context) async {
@@ -327,6 +337,99 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen> {
             child: const Text('Guardar'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TranscriptionCallout extends StatelessWidget {
+  const _TranscriptionCallout({required this.status, required this.onTap});
+
+  final RecordingStatus status;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, message, icon, emphasized) = switch (status) {
+      RecordingStatus.saved => (
+          'Siguiente paso recomendado',
+          'Este audio ya esta listo. Toca abajo para generar la transcripcion y el resumen.',
+          Icons.auto_fix_high,
+          true,
+        ),
+      RecordingStatus.failed => (
+          'Transcripcion pendiente',
+          'La transcripcion anterior fallo. Vuelve a abrirla para reintentar con otra API o con el motor local.',
+          Icons.refresh,
+          true,
+        ),
+      RecordingStatus.transcribing => (
+          'Transcripcion en progreso',
+          'La app esta procesando este audio en este momento.',
+          Icons.hourglass_top,
+          false,
+        ),
+      RecordingStatus.done => (
+          'Transcripcion disponible',
+          'Abre la transcripcion para leer el texto completo y generar o revisar el resumen.',
+          Icons.description_outlined,
+          false,
+        ),
+      _ => (
+          'Audio guardado',
+          'Desde aqui puedes abrir la transcripcion cuando quieras.',
+          Icons.article_outlined,
+          false,
+        ),
+    };
+
+    final buttonLabel = switch (status) {
+      RecordingStatus.done => 'Ver transcripcion y resumen',
+      RecordingStatus.transcribing => 'Procesando audio...',
+      RecordingStatus.failed => 'Reintentar transcripcion',
+      _ => 'Transcribir ahora',
+    };
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      color: emphasized
+          ? colorScheme.primaryContainer.withValues(alpha: 0.55)
+          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(message, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onTap,
+                icon: Icon(status == RecordingStatus.done
+                    ? Icons.visibility_outlined
+                    : Icons.auto_fix_high),
+                label: Text(buttonLabel),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
