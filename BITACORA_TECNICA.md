@@ -437,6 +437,20 @@
 - Implementar importacion de audios externos.
 - Exportacion a PDF/TXT.
 
+## 2026-05-05 (Ajuste WAV para Whisper local)
+
+### Hecho
+- Se detecto que `whisper_flutter_new` recomienda entrada WAV y el flujo actual guardaba AAC `.m4a`.
+- Se cambio `AudioRecorderService` para grabar directamente en `.wav` con `AudioEncoder.wav`.
+- Se actualizo la pantalla de ajustes para reflejar el nuevo formato de audio.
+
+### Hipotesis confirmada
+- La ruta local estaba forzando una conversion implícita o fallando por formato no ideal, lo que explicaba la sensacion de proceso lento o trabado.
+
+### Pendiente
+- Probar transcripcion local en dispositivo con audio real.
+- Retomar importacion externa con una estrategia de conversion dedicada si se requiere soportar formatos distintos de WAV.
+
 ### Build Android intentado
 - Se ejecuto `flutter doctor -v`.
 - Resultado: Flutter OK, pero Android reporta `cmdline-tools component is missing` y `Android license status unknown`.
