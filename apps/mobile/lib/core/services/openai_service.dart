@@ -69,7 +69,7 @@ class OpenAITranscriptionService implements TranscriptionService {
 
   Future<TranscriptionResult> _transcribeWithChunking(String audioPath) async {
     final chunker = AudioChunkerService();
-    final chunkResult = await chunker.prepareForUpload(
+    final chunkResult = await chunker.prepareForUploadWithConversion(
       audioPath,
       maxBytes: maxGroqFileBytes,
     );

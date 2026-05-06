@@ -65,6 +65,8 @@ class TranscriptionProvider extends ChangeNotifier {
   String? _summaryError;
   String? get summaryError => _summaryError;
 
+  static const int maxLocalDurationSeconds = 600;
+
   Future<void> transcribeRecording(String recordingId) async {
     _isTranscribing = true;
     _lastError = null;
@@ -78,6 +80,20 @@ class TranscriptionProvider extends ChangeNotifier {
     try {
       final recording = await _repository.getById(recordingId);
 
+      final validationError = _validateRecordingForEngine(recording);
+      if (validationError != null) {
+        _lastError = validationError;
+        _transcriptionStatus = validationError;
+        _log('transcribe_validation_failed: $validationError');
+        await _repository.update(
+          recording.copyWith(
+            status: RecordingStatus.failed,
+            updatedAt: DateTime.now(),
+          ),
+        );
+        return;
+      }
+
       await _repository.update(
         recording.copyWith(
           status: RecordingStatus.transcribing,
@@ -85,7 +101,7 @@ class TranscriptionProvider extends ChangeNotifier {
         ),
       );
 
-      final attempts = _buildTranscriptionAttempts();
+      final attempts = _buildTranscriptionAttempts(recording);
       final errors = <String>[];
 
       for (var i = 0; i < attempts.length; i++) {
@@ -159,6 +175,54 @@ class TranscriptionProvider extends ChangeNotifier {
     }
   }
 
+  String? _validateRecordingForEngine(Recording recording) {
+    final isLocal = _config.engine == TranscriptionEngine.local;
+    final isImported = recording.source == RecordingSource.import;
+    final ext = p.extension(recording.audioPath).toLowerCase();
+
+    if (isImported && isLocal) {
+      return 'Los archivos importados no se pueden transcribir con el motor local. '
+          'Configura una API (OpenAI, Groq o AssemblyAI) en Ajustes para transcribir archivos importados.';
+    }
+
+    if (isLocal) {
+      if (ext != '.wav') {
+        return 'El motor local solo soporta archivos WAV grabados desde la app. '
+            'Este archivo tiene formato $ext. Usa una API en la nube para otros formatos.';
+      }
+      if (recording.durationSeconds > maxLocalDurationSeconds) {
+        final maxMin = maxLocalDurationSeconds ~/ 60;
+        final recMin = recording.durationSeconds ~/ 60;
+        return 'El motor local tiene un limite de $maxMin minutos. '
+            'Esta grabacion dura $recMin minutos. Usa una API en la nube para transcribir.';
+      }
+    }
+
+    return null;
+  }
+
+  bool canTranscribeLocally(Recording recording) {
+    if (recording.source == RecordingSource.import) return false;
+    if (p.extension(recording.audioPath).toLowerCase() != '.wav') return false;
+    if (recording.durationSeconds > maxLocalDurationSeconds) return false;
+    return true;
+  }
+
+  String localTranscriptionWarning(Recording recording) {
+    if (recording.source == RecordingSource.import) {
+      return 'Archivo importado: se requiere una API en la nube para transcribir.';
+    }
+    final ext = p.extension(recording.audioPath).toLowerCase();
+    if (ext != '.wav') {
+      return 'Formato $ext no compatible con transcripcion local. Se requiere una API en la nube.';
+    }
+    if (recording.durationSeconds > maxLocalDurationSeconds) {
+      final maxMin = maxLocalDurationSeconds ~/ 60;
+      return 'La grabacion excede el limite de $maxMin minutos para transcripcion local. Se requiere una API en la nube.';
+    }
+    return '';
+  }
+
   Future<void> _prepareLocalModel(LocalWhisperService service) async {
     _isModelDownloading = true;
     _downloadProgress = 0;
@@ -187,8 +251,14 @@ class TranscriptionProvider extends ChangeNotifier {
     _downloadProgress = 0;
   }
 
-  List<_TranscriptionAttempt> _buildTranscriptionAttempts() {
+  List<_TranscriptionAttempt> _buildTranscriptionAttempts(Recording recording) {
+    final isImported = recording.source == RecordingSource.import;
+    final canLocal = !isImported &&
+        p.extension(recording.audioPath).toLowerCase() == '.wav' &&
+        recording.durationSeconds <= maxLocalDurationSeconds;
+
     if (_config.engine == TranscriptionEngine.local) {
+      if (!canLocal) return [];
       return [
         _TranscriptionAttempt(
           engine: TranscriptionEngine.local,
@@ -204,7 +274,7 @@ class TranscriptionProvider extends ChangeNotifier {
         (engine) =>
             engine != _config.engine && engine != TranscriptionEngine.local,
       ),
-      TranscriptionEngine.local,
+      if (canLocal) TranscriptionEngine.local,
     ];
 
     for (final engine in orderedEngines) {

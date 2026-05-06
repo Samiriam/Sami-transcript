@@ -387,6 +387,14 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context, ColorScheme colorScheme) {
+    final provider = context.read<TranscriptionProvider>();
+    final config = context.read<TranscriptionConfig>();
+    final isLocal = config.engine == TranscriptionEngine.local;
+    final localWarning =
+        isLocal ? provider.localTranscriptionWarning(widget.recording) : '';
+    final canLocal = provider.canTranscribeLocally(widget.recording);
+    final showTranscribe = !isLocal || canLocal;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -403,18 +411,55 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Toca el boton para transcribir este audio',
+              showTranscribe
+                  ? 'Toca el boton para transcribir este audio'
+                  : 'Este archivo no es compatible con el motor actual',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colorScheme.outline,
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _startTranscription,
-              icon: const Icon(Icons.auto_fix_high),
-              label: const Text('Transcribir'),
-            ),
+            if (localWarning.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Card(
+                color: Colors.orange.withValues(alpha: 0.1),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          size: 20, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          localWarning,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.orange.shade700,
+                                  ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Cambia el motor en Ajustes para transcribir este archivo.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.outline,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            if (showTranscribe) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _startTranscription,
+                icon: const Icon(Icons.auto_fix_high),
+                label: const Text('Transcribir'),
+              ),
+            ],
           ],
         ),
       ),
